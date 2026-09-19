@@ -1,0 +1,14 @@
+{
+  "name": "ukagaka-satori-helper",
+  "description": "里々で動く伺かのゴーストを作るための道具を配布しています。",
+  "owner": {
+    "name": "あーるでぃー"
+  },
+  "plugins": [
+    {
+      "name": "ukagaka-satori-helper",
+      "source": "./",
+      "description": "里々（Satori SHIORI）で動く伺かのゴーストを、Claude と一緒に作る・直すための道具一式。"
+    }
+  ]
+}

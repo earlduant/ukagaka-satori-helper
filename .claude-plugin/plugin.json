@@ -1,0 +1,11 @@
+{
+  "name": "ukagaka-satori-helper",
+  "description": "里々（Satori SHIORI）で動く伺かのゴーストを、Claude と一緒に作る・直すための道具一式。里々の記法、作れるかどうかの判断材料、動作を確かめるスクリプトが入っている。",
+  "version": "1.0.0",
+  "author": {
+    "name": "あーるでぃー"
+  },
+  "homepage": "https://github.com/earlduant/ukagaka-satori-helper",
+  "repository": "https://github.com/earlduant/ukagaka-satori-helper",
+  "license": "MIT"
+}
