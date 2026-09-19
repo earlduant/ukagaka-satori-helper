@@ -51,7 +51,8 @@ claude plugin list
 |---|---|
 | `--scope project` | いま開いているゴーストだけ |
 | `--scope user` | どのプロジェクトでも |
-| `claude plugin uninstall ukagaka-satori-helper` | 消す |
+| `claude plugin uninstall ukagaka-satori-helper --scope project` | 消す。入れたときと同じ `--scope` を渡す |
+| `claude plugin marketplace remove ukagaka-satori-helper` | 配布元の登録も消す |
 
 ### Claude Code に任せる場合
 
