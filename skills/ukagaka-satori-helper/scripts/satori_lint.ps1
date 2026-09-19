@@ -23,7 +23,8 @@
 #   [warn ] 括弧の中の字下げがタブでない（空白が引数に残る）
 #   [error] 行頭の ＄ ＞ ＿ の直後が空白（空白込みの名前で登録される）
 #   [error] ＝ / = の手前が空白（代入されない）
-#   [warn ] タブ区切りの代入に式を書いている（文字列として格納される）
+#   [warn ] タブ区切りの代入に計算されない演算子がある（数式が文字列として格納される）
+#   [error] タブ代入の自己参照に計算されない演算子がある（数式が文字列として際限なく伸びる）
 #   [error] システム変数（A○ R○ C○ S○）に代入している（引数・カウンタが壊れる）
 #   [warn ] 変数・単語群・トークで同じ名前を使っている（片方が読めなくなる）
 #   [error] 開きカッコが閉じていない（ファイル全体が無効になる）
@@ -264,6 +265,19 @@ public class SatoriLint
         return false;
     }
 
+    // 括弧の外（地の文）に演算子があるか
+    static bool HasOperatorInText(string val)
+    {
+        int depth = 0;
+        foreach (char c in val)
+        {
+            if (c == '（' || c == '(') depth++;
+            else if (c == '）' || c == ')') depth--;
+            else if (depth <= 0 && Array.IndexOf(OPERATORS, c) >= 0) return true;
+        }
+        return false;
+    }
+
     static bool IsSpace(char c)
     {
         return c == ' ' || c == '　' || c == '\t';
@@ -403,11 +417,21 @@ public class SatoriLint
                     }
 
                     // 9 タブ区切りの代入に式
-                    if (sep == '\t' && val.IndexOf('（') >= 0 && HasOperator(val))
+                    if (sep == '\t' && HasOperatorInText(val))
                     {
-                        Add(name, ln, "warn", "タブ代入の式",
-                            "タブ区切りの代入は右辺を計算しません。式が文字列として格納され、呼ばれるたびに伸びます。＝ を使ってください。",
-                            Visible(line));
+                        string self = "（" + vname + "）";
+                        if (val.Contains(self) || val.Contains("(" + vname + ")"))
+                        {
+                            Add(name, ln, "error", "自己参照の演算",
+                                "タブ代入の自己参照に計算されない演算子があります。数式が文字列として際限なく伸びます。＝ を使ってください。",
+                                Visible(line));
+                        }
+                        else
+                        {
+                            Add(name, ln, "warn", "タブ代入の演算",
+                                "タブ区切りの代入に計算されない演算子があります。数式が文字列として格納されます。＝ か calc を使ってください。",
+                                Visible(line));
+                        }
                     }
                 }
                 continue;
