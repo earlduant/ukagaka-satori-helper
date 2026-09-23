@@ -405,11 +405,11 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 ＿えらぶ<TAB>ジャンプ先   → \q[えらぶ,ジャンプ先◆えらぶ◆1]
 \q[えらぶ,ID1]           → \q[えらぶ,ID1◆えらぶ◆1]
 
-＿test<TAB>OnID          → \q[test,OnID]                そのまま
-\q[test,OnID]            → \q[test,OnID]                そのまま
-\q[test,OnID,r0,r1]      → \q[test,OnID,r0,r1]          そのまま
+＿test<TAB>On_ID         → \q[test,On_ID]               そのまま
+\q[test,On_ID]           → \q[test,On_ID]               そのまま
+\q[test,On_ID,r0,r1]     → \q[test,On_ID,r0,r1]         そのまま
 \q[test,script:\e]       → \q[test,script:\e]           そのまま
-\__q[OnID,param]…\__q    → そのまま
+\__q[On_ID,param]…\__q   → そのまま
 
 ◆ は 0x01
 ```
@@ -428,7 +428,7 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 - `On` で始まる ID は、選択時にその名前の SHIORI イベントが直接発生する
 - `script:` で始まる ID は、その内容がさくらスクリプトとして実行される
 
-書き換えれば `OnID◆ラベル◆1` という名前のイベントを要求することになり、
+書き換えれば `On_ID◆ラベル◆1` という名前のイベントを要求することになり、
 壊れる。里々はそれを避けている。
 
 ### 書き換えられなければ選択肢変数も更新されない

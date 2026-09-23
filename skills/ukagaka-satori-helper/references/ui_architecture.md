@@ -338,10 +338,10 @@ SSP がそれを再生すると、50ms ごとに絵が動く。
 ）（when，（point1get） == 0，\i[101]）φ
 （while，まだ落ちきっていない
 	，\![anim,offset,101,（point1nowx）,（point1nowy）]
-	\_w[（キャッチ描画間隔）]\![embed,OnFrameCountCatchGame]
+	\_w[（キャッチ描画間隔）]\![embed,On_Frame_Count_Catch_Game]
 	（set,point1nowy,（point1nowy） + （when,（_i） >= （point1start）,（キャッチ落下速度）,0））
 	（set,_i,（_i） + 1）
-）\![raise,OnEndCatchGame]
+）\![raise,On_End_Catch_Game]
 ```
 
 | | |
@@ -374,9 +374,9 @@ SSP がそれを再生すると、50ms ごとに絵が動く。
 代わりに、通過点を仕込む。
 
 ```
-	\_w[（キャッチ描画間隔）]\![embed,OnFrameCountCatchGame]
+	\_w[（キャッチ描画間隔）]\![embed,On_Frame_Count_Catch_Game]
 
-＠OnFrameCountCatchGame
+＠On_Frame_Count_Catch_Game
 （set,pastframe,（pastframe） + 1）
 ```
 
