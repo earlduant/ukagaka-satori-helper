@@ -4,8 +4,9 @@
 
 AI に里々のことを教え、AIに里々の機能を作らせたりバグ取りをさせるものです。
 
-ゴーストをこれから立ち上げる場合は、AI と一緒に作り始めるための里々のゴーストのひな形
-[POST_and_KOMAINU_V2](https://github.com/ukatech/POST_and_KOMAINU_V2) から始められます。
+ゴーストを一から作る場合は、
+[里々サンプルゴースト ポストと狛犬 ＋ バイブコーディングツールキット（里々/Win版）](https://github.com/ukatech/POST_and_KOMAINU_V2)
+から始められます。
 
 ---
 
@@ -40,7 +41,7 @@ claude plugin install ukagaka-satori-helper --scope project
 
 ### 入れたあと
 
-**Claude Code をいったん終了して、開き直します。**入れた直後のセッションには読み込まれません。
+**Claude Code をいったん終了して、開き直します**。入れた直後のセッションには読み込まれません。
 
 開き直したら、
 
@@ -94,7 +95,7 @@ github の earlduant/ukagaka-satori-helper を、このプロジェクトに入�
 
 ### 置いたあと
 
-**いったん終了して、開き直します。**置いた直後には読み込まれません。
+**いったん終了して、開き直します**。置いた直後には読み込まれません。
 
 開き直してから、里々のことを何か頼んでみてください。
 `references\` を読みにいく様子が見えれば、読み込まれています。
