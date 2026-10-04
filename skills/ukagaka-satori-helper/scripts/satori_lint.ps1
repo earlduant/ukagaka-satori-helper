@@ -15,8 +15,14 @@
 #   見るのは自分が書いた箇所・修正を依頼された箇所だけ。
 #
 # 何を検出するか ── 里々もテスターも何も言わないもの
-#   [error] if / iflist の枝に set や call がある（両方の枝が実行される）
+#   [error] if / iflist / unless / switch / nswitch / choice の枝に処理がある（両方の枝が実行される）
+#           処理とみなすのは set・単語の追加・追加単語の削除・追加単語の全削除と、
+#           それを含む定義を呼ぶ call / loop / vncall。
+#           値を返すだけの定義を呼ぶものは報告しない。
+#   [warn ] 上の枝で、呼び先が判定できない call がある（動的な名前、辞書に無い名前）
 #   [error] 遅延する関数の引数がカッコで区切られている（if と同じ動作になる）
+#   [error] 閉じていない（ が次の ＊ ＠ の行を飲み込んでいる（間の定義が消える。里々は報告しない）
+#   [warn ] スコープ（： \0 \1）の直後に半角 [ がある（タグの引数として扱われる）
 #   [warn ] 採用条件がタブで区切られていない（条件が本文になり、常に採用される）
 #   [warn ] 条件式に数値にならない文字列を書いている（0 とみなされ常に偽）
 #   [warn ] 同名定義の採用条件に、同一の（乱数…）が2回以上ある（1回しか評価されない）
@@ -24,10 +30,11 @@
 #   [error] 行頭の ＄ ＞ ＿ の直後が空白（空白込みの名前で登録される）
 #   [error] ＝ / = の手前が空白（代入されない）
 #   [warn ] タブ区切りの代入に計算されない演算子がある（数式が文字列として格納される）
+#           （名前）と数のあいだの演算子だけを見る。日付・％・文字列の連結は報告しない
 #   [error] タブ代入の自己参照に計算されない演算子がある（数式が文字列として際限なく伸びる）
 #   [error] システム変数（A○ R○ C○ S○）に代入している（引数・カウンタが壊れる）
 #   [warn ] 変数・単語群・トークで同じ名前を使っている（片方が読めなくなる）
-#   [error] 開きカッコが閉じていない（ファイル全体が無効になる）
+#   [error] 開きカッコが末尾まで閉じていない（そこから後ろの定義が無効になる）
 #   [warn ] 閉じカッコが過剰（里々は動くが、入れ子の書き間違いの兆候）
 #
 # 何を検出しないか ── 里々が場所まで報告する。テスターを通せば分かる
@@ -42,6 +49,7 @@
 #   里々が実際に見るのは置換後の文字列なので、同じものを検査する。
 #   辞書と replace.txt は別の設定で文字コードが決まる。
 #   辞書は is_utf8_dic、replace.txt は is_utf8_replace。is_utf8_all は両方に効く。
+#   BOM 付き UTF-8 のファイルは、設定にかかわらず UTF-8 として読む（里々と同じ）。
 #   行ごとに置換するので行番号は保たれる。
 #   出力するファイル名と行番号は本番の辞書に対応する。修正するのは本番。
 #
@@ -85,13 +93,22 @@ public class SatoriLint
     static readonly char[] DELIMS = { '、', '､', '，', ',', (char)0x01 };
 
     // 引数の展開を遅延する関数。区切りがカッコだと遅延が効かない
-    static readonly string[] LAZY = { "when", "whenlist", "unless", "for", "times", "while" };
+    static readonly string[] LAZY = { "when", "whenlist", "for", "times", "while" };
 
     // 遅延しない関数。枝に副作用があると両方実行される
-    static readonly string[] EAGER = { "if", "iflist" };
+    static readonly string[] EAGER = { "if", "iflist", "unless", "switch", "nswitch", "choice" };
 
-    // 副作用のある呼び出し
-    static readonly string[] SIDE_EFFECT = { "set", "call" };
+    // 枝が第1引数から始まる関数（他は第2引数から。第1引数は条件や比べる値）
+    static readonly string[] ALL_ARGS_BRANCH = { "choice" };
+
+    // それ自体が副作用を持つ関数
+    static readonly Regex SIDE_EFFECT = new Regex(@"（(set|単語の追加|追加単語の削除|追加単語の全削除)[、､，,\x01（]");
+
+    // 定義を呼ぶ関数。呼び先に副作用があるかを辿る
+    static readonly Regex CALLER = new Regex(@"（(call|loop|vncall)([、､，,\x01])");
+
+    // 呼び先の定義の本文。名前 → 本文（同名は全部）
+    static Dictionary<string, List<string>> defs = new Dictionary<string, List<string>>();
 
     // システム変数。代入すると引数・カウンタが壊れる
     static readonly Regex SYSTEM_VAR = new Regex(@"^[ARCSＡＲＣＳ][0-9０-９]+$");
@@ -104,6 +121,9 @@ public class SatoriLint
 
     // 比較演算子
     static readonly Regex COMPARE = new Regex(@"==|!=|>=|<=|＝＝|！＝|＞＝|＜＝|>|<|＞|＜");
+
+    // スコープ（：、\0、\1）の直後の半角 [
+    static readonly Regex SCOPE_BRACKET = new Regex(@"：\[|(?<!\\)\\[01]\[");
 
     // 採用条件の中の乱数
     static readonly Regex RANDOM = new Regex(@"[（(]乱数[^（）()]*[）)]");
@@ -265,17 +285,135 @@ public class SatoriLint
         return false;
     }
 
-    // 括弧の外（地の文）に演算子があるか
-    static bool HasOperatorInText(string val)
+    static bool IsDigitChar(char c)
+    {
+        return (c >= '0' && c <= '9') || (c >= '０' && c <= '９');
+    }
+
+    // 括弧の外（地の文）に、計算のつもりの演算子があるか。
+    // 演算子の片側が数、反対側が全角括弧の参照のときだけ真（（カウンタ）＋１ の形）。
+    static bool HasCalcOperator(string val)
     {
         int depth = 0;
-        foreach (char c in val)
+        for (int i = 0; i < val.Length; i++)
         {
-            if (c == '（' || c == '(') depth++;
-            else if (c == '）' || c == ')') depth--;
-            else if (depth <= 0 && Array.IndexOf(OPERATORS, c) >= 0) return true;
+            char c = val[i];
+            if (c == '（') { depth++; continue; }
+            if (c == '）') { depth--; continue; }
+            if (depth > 0 || Array.IndexOf(OPERATORS, c) < 0) { continue; }
+
+            int l = i - 1; while (l >= 0 && IsSpace(val[l])) { l--; }
+            int r = i + 1; while (r < val.Length && IsSpace(val[r])) { r++; }
+            if (l < 0 || r >= val.Length) { continue; }
+            char p = val[l], n = val[r];
+            if ((p == '）' && IsDigitChar(n)) || (IsDigitChar(p) && n == '（')) { return true; }
         }
         return false;
+    }
+
+    // 括弧の中身を引数に分ける。区切りは関数名の直後に最初に出た区切り文字に固定される
+    static List<string> SplitArgs(string body, string fn)
+    {
+        List<string> args = new List<string>();
+        string rest = body.Substring(fn.Length);
+        char delim = '\0';
+        int depth = 0;
+        for (int i = 0; i < rest.Length; i++)
+        {
+            char c = rest[i];
+            if (i > 0 && rest[i - 1] == 'φ') { continue; }
+            if (c == '（') { depth++; }
+            else if (c == '）') { depth--; }
+            else if (depth == 0 && IsDelim(c)) { delim = c; break; }
+        }
+        if (delim == '\0') { return args; }
+
+        StringBuilder cur = null;
+        depth = 0;
+        for (int i = 0; i < rest.Length; i++)
+        {
+            char c = rest[i];
+            bool esc = (i > 0 && rest[i - 1] == 'φ');
+            if (!esc && c == '（') { depth++; }
+            else if (!esc && c == '）') { depth--; }
+            if (depth == 0 && c == delim && !esc)
+            {
+                if (cur != null) { args.Add(cur.ToString()); }
+                cur = new StringBuilder();
+                continue;
+            }
+            if (cur != null) { cur.Append(c); }
+        }
+        if (cur != null) { args.Add(cur.ToString()); }
+        return args;
+    }
+
+    // 文字列の中に副作用があるか。
+    // 0 なし / 1 あり / 2 判定できない。what に何が見つかったかを入れる
+    static int FindEffect(string s, int level, HashSet<string> visiting, out string what)
+    {
+        what = null;
+        Match m = SIDE_EFFECT.Match(s);
+        if (m.Success) { what = m.Groups[1].Value; return 1; }
+
+        int unknown = 0;
+        string unknownWhat = null;
+        foreach (Match c in CALLER.Matches(s))
+        {
+            int p = c.Index + c.Length;
+            if (p < s.Length && s[p] == '（')
+            {
+                unknown = 2; unknownWhat = c.Groups[1].Value + "（名前が動的）";
+                continue;
+            }
+            StringBuilder nm = new StringBuilder();
+            while (p < s.Length && !IsDelim(s[p]) && s[p] != '）' && s[p] != '（') { nm.Append(s[p]); p++; }
+            string name = nm.ToString().Trim();
+            if (name.Length == 0) { continue; }
+
+            List<string> bodies;
+            if (!defs.TryGetValue(name, out bodies))
+            {
+                unknown = 2; unknownWhat = c.Groups[1].Value + " " + name + "（辞書に無い）";
+                continue;
+            }
+            if (level >= 8 || visiting.Contains(name)) { continue; }
+            visiting.Add(name);
+            foreach (string b in bodies)
+            {
+                string inner;
+                // 呼び先の ＄ の行は代入
+                if (Regex.IsMatch(b, @"(^|\n)＄")) { what = c.Groups[1].Value + " " + name + " の中の ＄"; visiting.Remove(name); return 1; }
+                int r = FindEffect(b, level + 1, visiting, out inner);
+                if (r == 1) { what = c.Groups[1].Value + " " + name + " の中の " + inner; visiting.Remove(name); return 1; }
+                if (r == 2 && unknown == 0) { unknown = 2; unknownWhat = c.Groups[1].Value + " " + name + " の中の " + inner; }
+            }
+            visiting.Remove(name);
+        }
+        if (unknown == 2) { what = unknownWhat; }
+        return unknown;
+    }
+
+    // 定義の本文を集める（call の呼び先を辿るため）
+    static void CollectDefs(string[] lines)
+    {
+        string name = null;
+        StringBuilder body = null;
+        for (int i = 0; i <= lines.Length; i++)
+        {
+            string line = (i < lines.Length) ? lines[i].TrimEnd('\r') : null;
+            bool head = (line == null) || (line.Length > 0 && (line[0] == '＊' || line[0] == '＠'));
+            if (!head) { if (body != null) { body.Append(line).Append('\n'); } continue; }
+            if (name != null)
+            {
+                if (!defs.ContainsKey(name)) { defs[name] = new List<string>(); }
+                defs[name].Add(body.ToString());
+            }
+            if (line == null) { break; }
+            int tab = line.IndexOf('\t');
+            name = (tab < 0 ? line.Substring(1) : line.Substring(1, tab - 1)).Trim();
+            body = new StringBuilder();
+        }
     }
 
     static bool IsSpace(char c)
@@ -293,7 +431,7 @@ public class SatoriLint
         foreach (int pos in unclosed)
         {
             Add(name, LineOf(lineStarts, pos), "error", "カッコ未閉じ",
-                "開きカッコ「（」に対応する「）」がありません。このファイルの定義はすべて無効になります。",
+                "開きカッコ「（」に対応する「）」がありません。この定義からファイルの末尾までが無効になります。",
                 Excerpt(text, pos));
         }
         foreach (int pos in orphan)
@@ -304,7 +442,30 @@ public class SatoriLint
         }
     }
 
-    // 1 ifの副作用 / 2 カッコ区切り / 6 字下げ
+    // 括弧が ＊ ＠ の行をまたいでいる。閉じ忘れが、後ろの別の「）」と対になった形。
+    // 里々は報告せず、間の定義が台詞として飲み込まれる
+    static void CheckSwallow(string name, string text, List<int> lineStarts, List<Node> nodes)
+    {
+        List<Node> spans = new List<Node>();
+        foreach (Node n in nodes)
+        {
+            string inner = text.Substring(n.Start, n.End - n.Start);
+            if (inner.IndexOf("\n＊") >= 0 || inner.IndexOf("\n＠") >= 0) { spans.Add(n); }
+        }
+        spans.Sort(delegate(Node a, Node b) { return a.Start.CompareTo(b.Start); });
+        int lastEnd = -1;
+        foreach (Node n in spans)
+        {
+            if (n.Start < lastEnd) { continue; }
+            lastEnd = n.End;
+            Add(name, LineOf(lineStarts, n.Start), "error", "定義の飲み込み",
+                "閉じていない「（」が、" + LineOf(lineStarts, n.End) + "行目の「）」まで続いています。"
+                + "間にある ＊ ＠ の定義は読まれず、台詞として表示されます。里々は報告しません。",
+                Excerpt(text, n.Start));
+        }
+    }
+
+    // 1 枝の副作用 / 2 カッコ区切り / 6 字下げ
     static void CheckNodes(string name, string text, List<int> lineStarts, List<Node> nodes)
     {
         foreach (Node node in nodes)
@@ -313,18 +474,32 @@ public class SatoriLint
             string fn = FuncName(body);
             int line = LineOf(lineStarts, node.Start);
 
-            // 1 ifの副作用
+            // 1 枝の副作用
             if (In(EAGER, fn))
             {
-                foreach (string se in SIDE_EFFECT)
+                List<string> args = SplitArgs(body, fn);
+                int from = In(ALL_ARGS_BRANCH, fn) ? 0 : 1;
+                int found = 0;
+                string what = null;
+                for (int a = from; a < args.Count && found != 1; a++)
                 {
-                    if (body.IndexOf("（" + se) >= 0)
-                    {
-                        Add(name, line, "error", "ifの副作用",
-                            fn + " の枝に " + se + " があります。両方の枝が実行されるので when / whenlist を使ってください。",
-                            Excerpt(text, node.Start));
-                        break;
-                    }
+                    string w;
+                    int r = FindEffect(args[a], 0, new HashSet<string>(), out w);
+                    if (r == 1 || (r == 2 && found == 0)) { found = r; what = w; }
+                }
+                if (found == 1)
+                {
+                    Add(name, line, "error", "枝の副作用",
+                        fn + " の枝に処理（" + what + "）があります。" + fn
+                        + " は選ばれなかった枝も実行するので、when / whenlist を使ってください。",
+                        Excerpt(text, node.Start));
+                }
+                else if (found == 2)
+                {
+                    Add(name, line, "warn", "枝の呼び出し",
+                        fn + " の枝に、呼び先を判定できない呼び出し（" + what + "）があります。"
+                        + "呼び先に処理があれば、選ばれなかった枝でも実行されます。",
+                        Excerpt(text, node.Start));
                 }
             }
 
@@ -377,6 +552,15 @@ public class SatoriLint
             char head = line[0];
             int ln = i + 1;
 
+            // 12 スコープの直後の半角 [
+            if (head != '＄' && head != '＊' && head != '＠' && SCOPE_BRACKET.IsMatch(line))
+            {
+                Add(name, ln, "warn", "スコープ直後の[",
+                    "スコープ（： \\0 \\1）の直後に半角 [ があります。里々がタグの引数として扱い、"
+                    + "ほかに文字が無いと応答が 204 になります。全角の括弧にしてください。",
+                    Visible(line));
+            }
+
             // 7 記号の直後が空白
             if (head == '＄' || head == '＞' || head == '＿')
             {
@@ -417,7 +601,7 @@ public class SatoriLint
                     }
 
                     // 9 タブ区切りの代入に式
-                    if (sep == '\t' && HasOperatorInText(val))
+                    if (sep == '\t' && HasCalcOperator(val))
                     {
                         string self = "（" + vname + "）";
                         if (val.Contains(self) || val.Contains("(" + vname + ")"))
@@ -629,10 +813,14 @@ public class SatoriLint
         Dictionary<string, Dictionary<string, List<string>>> names =
             new Dictionary<string, Dictionary<string, List<string>>>();
 
+        // 1周目: 読み込みと、呼び先を辿るための定義の収集
+        defs.Clear();
+        List<string[]> loaded = new List<string[]>();
         foreach (string path in paths)
         {
             string fname = path.Substring(dir.Length).TrimStart('\\', '/');
             string raw;
+            // ReadAllText は BOM を見て UTF-8 と判別する。BOM が無ければ設定どおりの文字コード
             try { raw = File.ReadAllText(path, enc).Replace("\r\n", "\n"); }
             catch (Exception ex) { output.Add("読み込み失敗: " + fname + " (" + ex.Message + ")"); continue; }
 
@@ -647,6 +835,17 @@ public class SatoriLint
                 }
                 text = string.Join("\n", lines);
             }
+
+            CollectDefs(lines);
+            loaded.Add(new string[] { fname, text });
+        }
+
+        // 2周目: 検査
+        foreach (string[] item in loaded)
+        {
+            string fname = item[0];
+            string text = item[1];
+            string[] lines = text.Split('\n');
 
             List<int> lineStarts = BuildLineStarts(text);
 
@@ -665,6 +864,7 @@ public class SatoriLint
                 continue;
             }
 
+            CheckSwallow(fname, text, lineStarts, nodes);
             CheckNodes(fname, text, lineStarts, nodes);
             CheckLines(fname, lines);
             CheckRandom(fname, lines);

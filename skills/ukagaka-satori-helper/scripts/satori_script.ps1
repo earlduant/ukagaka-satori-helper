@@ -46,10 +46,12 @@
 #   [warn ] \__q \_a が、開かれていないのに閉じられている
 #   [warn ] 選択肢・アンカーの ID が空（どれを選んだか判別できない）
 #   [warn ] \n の引数が half でもパーセントでもない（表示されずに消える）
+#   [warn ] （関数名, の形が展開されずに残っている（関数名の誤りか、satori.dll がその関数を持っていない）
+#           関数名は半角英小文字で始まるものだけを見る
 #
 # 検出しないもの
 #   引数が空のタグ            空でも問題にならないタグがある。確実に言えない
-#   展開されなかった （…）    φ（ で意図して出したものと区別できない。
+#   展開されなかった （名前） φ（ で意図して出したものと区別できない。
 #                             内部ログの not found で分かる
 #   未実装のタグ              SSP の実装状況を持たない。持っても更新で古くなる
 #   タグ名のタイポ            \f[heigh,100%] のような誤り
@@ -180,15 +182,31 @@ function Check-SatoriTags {
         }
     }
     
+    return $problems
+}
+
+# 展開されずに残った関数呼び出し。タグではなく本文を見るので、タグの検査とは別に走らせる
+function Check-SatoriUnexpanded {
+    param([string]$s)
+    $problems = [System.Collections.Generic.List[psobject]]::new()
+    $seen = @{}
+    foreach ($m in [regex]::Matches($s, '（([a-z_][a-z0-9_]*)[,、，､\x01]')) {
+        $fn = $m.Groups[1].Value
+        if ($seen.ContainsKey($fn)) { continue }
+        $seen[$fn] = 1
+        $problems.Add([pscustomobject]@{ Level = 'warn'; Pos = $m.Index; Text = "（$fn,… が展開されずに残っている。関数名の誤りか、satori.dll がその関数を持っていない" })
+    }
+    return $problems
+}
+
+function Check-SatoriNewline {
+    param($tags)
+    $problems = [System.Collections.Generic.List[psobject]]::new()
     $PERCENT = [regex]'^-?[0-9]+$'
     foreach ($t in $tags) {
         if ($t.Name -ne 'n' -or [string]::IsNullOrEmpty($t.Arg) -or $t.Unclosed) { continue }
         if ($t.Arg -eq 'half' -or $PERCENT.IsMatch($t.Arg)) { continue }
         $problems.Add([pscustomobject]@{ Level = 'warn'; Pos = $t.Pos; Text = "\n[$($t.Arg)] は改行の指定になっていない。[$($t.Arg)] は表示されずに消える（表示したいなら ［ を全角にする）" })
-    }
-    
-    if ($problems.Count -gt 0) {
-        $problems.Sort({ param($a, $b) $a.Pos - $b.Pos })
     }
     return $problems
 }
@@ -236,7 +254,11 @@ try {
         $output = [System.Collections.Generic.List[string]]::new()
         foreach ($r in $responses) {
             $tags = Get-SatoriTags $r.Script
-            $problems = Check-SatoriTags $tags
+            $problems = [System.Collections.Generic.List[psobject]]::new()
+            foreach ($p in (Check-SatoriTags $tags)) { $problems.Add($p) }
+            foreach ($p in (Check-SatoriNewline $tags)) { $problems.Add($p) }
+            foreach ($p in (Check-SatoriUnexpanded $r.Script)) { $problems.Add($p) }
+            if ($problems.Count -gt 1) { $problems.Sort({ param($a, $b) $a.Pos - $b.Pos }) }
             foreach ($p in $problems) {
                 if ($p.Level -eq 'error') { $errors++ } else { $warns++ }
                 $lvl = if ($p.Level -eq 'error') { "error" } else { "warn " }

@@ -7,8 +7,8 @@
 #
 # コマンド
 #   list <master> <作業フォルダ>
-#       対象ファイルを列挙。結果が「Shift_JISが混じります」なら、以後の読み書きはすべて本ツールを通す。
-#       「UTF-8です」なら直接編集してよい。
+#       対象ファイルを列挙。結果が「Shift_JIS が混じります」なら、以後の読み書きはすべて本ツールを通す。
+#       「UTF-8 です」なら直接編集してよい。
 #   find <master> <作業フォルダ> <語>
 #       対象ファイルから指定した文字列を部分一致で検索する（大小文字・全角半角を区別）。
 #   read <ファイル> <作業フォルダ> <開始行> <終了行>
@@ -19,6 +19,8 @@
 #       指定した行の「前」に内容ファイルを挿入する。末尾追加は <総行数+1> を指定。
 #   create <ファイル> <作業フォルダ> <内容ファイル>
 #       新規作成。satori_bootconf.txt の設定に従った文字コードで保存される（BOMなし）。
+#
+# BOM 付き UTF-8 のファイルは、設定にかかわらず UTF-8 として読み書きする（BOM は残す）。
 #
 # 内容ファイルについて (write / insert / create)
 #   書き込む中身を UTF-8 で書いたファイル。絶対パスで渡すこと。
@@ -112,7 +114,18 @@ public class SatoriDic
         return c;
     }
 
+    static bool HasBom(string file) {
+        if (!File.Exists(file)) return false;
+        using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read)) {
+            byte[] b = new byte[3];
+            int n = fs.Read(b, 0, 3);
+            return n == 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF;
+        }
+    }
+
     static Encoding GetEncoding(BootConf c, string file) {
+        // BOM 付き UTF-8 は設定にかかわらず UTF-8（里々と同じ判別）
+        if (HasBom(file)) return new UTF8Encoding(false);
         string name = Path.GetFileName(file).ToLower();
         bool u = false;
         if ((name.StartsWith("dic") && name.EndsWith(".txt")) || name == "satori_conf.txt") {
@@ -284,7 +297,8 @@ public class SatoriDic
             if (fd.error != null) {
                 broken.Add(f + "|" + fd.error.Replace("拒否: ", "").Replace(" satori_bootconf.txt の", ""));
             } else {
-                valid.Add(f + "|" + (enc is UTF8Encoding ? "UTF-8" : "Shift_JIS") + "|" + fd.lines.Length);
+                bool bom = fd.bom.Length > 0;
+                valid.Add(f + "|" + (enc is UTF8Encoding ? (bom ? "UTF-8 BOM" : "UTF-8") : "Shift_JIS") + "|" + fd.lines.Length);
             }
         }
 

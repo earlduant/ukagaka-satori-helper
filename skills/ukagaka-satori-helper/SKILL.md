@@ -104,8 +104,10 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 
 ## ghost\master の下は、すべて作業対象
 
-退避やコピーを中に置かない。`dic*.txt` はサブフォルダも含めて集められ、
-里々が定義として読み、検査も走る。
+退避やコピーを中に置かない。
+
+サブフォルダの `dic*.txt` も、`＄辞書フォルダ` で切り替えたときに里々が読む。
+検査もサブフォルダまで走る。
 
 バックアップが要るなら、利用者に頼む。
 作業フォルダは使い捨てなので、置き場所にならない。
@@ -123,9 +125,9 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\master> <作業フォルダ>
 ```
 
-「Shift_JISが混じります」が返ったら、**以後の辞書の読み書きはすべて
+「Shift_JIS が混じります」が返ったら、**以後の辞書の読み書きはすべて
 `scripts\satori_dic.ps1` を通す。**直接編集すると文字化けし、元に戻せない。
-「UTF-8です」なら直接編集してよい。
+「UTF-8 です」なら直接編集してよい。
 
 **2. 里々で作れるかを判断する** ── `references\capabilities.md`
 
@@ -143,7 +145,6 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 
 **5. 書く** ── `references\syntax.md` を通読する
 
-里々はエラーを出さない。書いてから気づく手段が無い。
 何を作るかで引くものが変わる。下の「参照先」を見る。
 
 **6. 通す** ── `references\testing.md`
