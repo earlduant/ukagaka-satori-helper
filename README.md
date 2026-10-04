@@ -4,6 +4,9 @@
 
 AI に里々のことを教え、AIに里々の機能を作らせたりバグ取りをさせるものです。
 
+ゴーストをこれから立ち上げる場合は、AI と一緒に作り始めるための里々のゴーストのひな形
+[POST_and_KOMAINU_V2](https://github.com/ukatech/POST_and_KOMAINU_V2) から始められます。
+
 ---
 
 ## 必要なもの
