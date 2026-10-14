@@ -23,6 +23,7 @@ SSP を起動せずに `satori.dll` を直接動かし、イベントを送っ�
 - [1回送っただけでは出ないもの](#1回送っただけでは出ないもの)
 - [確かめられないこと](#確かめられないこと)
 - [SSP にしか無い情報を取る](#ssp-にしか無い情報を取る)
+- [起動中の里々から値を取る](#起動中の里々から値を取る)
 - [自分で取れないものは、頼む](#自分で取れないものは頼む)
 - [結果の扱い](#結果の扱い)
 
@@ -75,7 +76,7 @@ SSP を起動せずに `satori.dll` を直接動かし、イベントを送っ�
 32bit かどうかは気にしない。`satori.dll` は 32bit だが、
 `satori_runner` が 64bit で起動された場合は自分で 32bit の PowerShell へ渡し直す。
 
-作業フォルダは `SKILL.md` の「作業フォルダ」。4本とも同じものを渡してよい。
+作業フォルダは `SKILL.md` の「作業フォルダ」。
 
 | 作られるもの | |
 |---|---|
@@ -104,14 +105,8 @@ Reference の要否はイベントごとに違う。SHIORI イベントの仕様
 
 ### リクエストの文字コード
 
-既定では Shift_JIS で送る。Shift_JIS に無い文字を Reference に入れるときだけ、`Charset:` の行を書く。
-
-```
-Charset: UTF-8          ← 最初の [イベント名] より前なら、全イベントに効く
-
-[OnTest]
-Charset: UTF-8          ← イベントの中なら、そのイベントだけ
-```
+テスターが決める。里々が UTF-8 を扱えるなら UTF-8、扱えなければ Shift_JIS で送る。
+UTF-8 を扱える里々には、SSP も UTF-8 で送っている。
 
 ## 手順
 
@@ -127,7 +122,7 @@ Reference0: master
 2. テスターに通す
 
 ```
-powershell -ExecutionPolicy Bypass -File scripts\satori_runner.ps1 <seq.txt> <ghost/master> <作業フォルダ> "" > runner_out.txt
+powershell -ExecutionPolicy Bypass -File scripts\satori_runner.ps1 <seq.txt> <ghost/master> <作業フォルダ> "" > <作業フォルダ>\runner_out.txt
 ```
 
 第4引数は持っていくセーブデータのパス。`""` なら初期状態から始まる。
@@ -145,13 +140,13 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_lint.ps1 <ghost/master>
 4. 応答したスクリプトを検査する
 
 ```
-powershell -ExecutionPolicy Bypass -File scripts\satori_script.ps1 runner_out.txt <作業フォルダ>
+powershell -ExecutionPolicy Bypass -File scripts\satori_script.ps1 <作業フォルダ>\runner_out.txt
 ```
 
 5. 原因を辿る（必要なときだけ）
 
 ```
-powershell -ExecutionPolicy Bypass -File scripts\satori_log.ps1 <作業フォルダ>\satori_runner\internal.log <作業フォルダ> problems ""
+powershell -ExecutionPolicy Bypass -File scripts\satori_log.ps1 <作業フォルダ>\satori_runner\internal.log problems ""
 ```
 
 `problems` で里々が見つけられなかったものが出る。まずこれを引く。
@@ -162,8 +157,8 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_log.ps1 <作業フォル
 ```
 ========== OnBoot ==========
 SHIORI/3.0 200 OK
+Charset: UTF-8
 Value: \0\s[0]\1\s[10]\0こんにちは。\e
-Charset: Shift_JIS
 
 内部ログ: <作業フォルダ>\satori_runner\internal.log (XX 行)
 ```
@@ -178,13 +173,13 @@ Charset: Shift_JIS
 標準出力はファイルへ落とし、`Value:` の行だけを取り出す。
 
 ```powershell
-(Get-Content runner_out.txt -Encoding UTF8) | Where-Object { $_ -like "Value:*" }
+(Get-Content <作業フォルダ>\runner_out.txt -Encoding UTF8) | Where-Object { $_ -like "Value:*" }
 ```
 
 どのトークが選ばれたかを見るなら、辞書に書いた語で絞る。
 
 ```powershell
-(Get-Content runner_out.txt -Encoding UTF8) | Where-Object { $_ -match "探したい語" }
+(Get-Content <作業フォルダ>\runner_out.txt -Encoding UTF8) | Where-Object { $_ -match "探したい語" }
 ```
 
 | | |
@@ -369,6 +364,34 @@ SSP が起動中であれば、SSTP を用いて直接取得できる。
 一覧、図鑑、メニュー、表 ── 1行に何個入るかを決める場面がこれにあたる。
 仮の値で組む前に、実際の幅を見る。
 
+## 起動中の里々から値を取る
+
+テスターの里々は作業フォルダのコピーで、初期状態か、渡したセーブデータの状態から始まる。
+利用者のゴーストが**いま**持っている値とは違う。次のものは、起動中のゴーストに問い合わせて取る。
+
+- 変数・単語群の、いまの値（進行の段階、フラグ、利用者が入力した名前など）
+- SSP と里々のあいだの文字コード（`（Charset）`）
+
+`Get-GhostInfo.ps1 -Name` に、名前をそのまま渡す。括弧は付けない。
+
+```powershell
+.\Get-GhostInfo.ps1 -Name Charset
+```
+
+里々は、同じ名前のトークが無いイベントには、同じ名前の変数・単語群の値を返す。
+`Get-GhostInfo.ps1` は、プロパティとして見つからない名前をイベントとして送るので、この値が返る。
+
+`（Status）` は空になる。
+`（Sender）` は、ふだんはベースウェアの名前（SSP なら `SSP`）だが、
+SSTP で送ったイベントでは送ったプログラムの名前になる（`Get-GhostInfo.ps1` は `CLI`）。
+
+値はバルーンにも表示される。
+同じ名前のトーク（`＊名前`）があると、値ではなくそのトークが実行される。
+
+空が返ったら、その名前が無いのか、値が空なのかは区別できない。
+
+SSP が動いていなければ、ツールがそう言って終わる。そのときの扱いは前節と同じ。
+
 ## 自分で取れないものは、頼む
 
 まず、自分で取れるかを確かめる。取れるものを人にやらせない。
@@ -376,6 +399,7 @@ SSP が起動中であれば、SSTP を用いて直接取得できる。
 | | |
 |---|---|
 | プロパティの値 | `Get-GhostInfo.ps1` で取れる。頼まない |
+| 起動中の里々の変数 | `Get-GhostInfo.ps1 -Name 変数名` で取れる。頼まない |
 | 辞書が返す文字列 | テスターで取れる。頼まない |
 | 機器からの入力 | 取れない。押してもらうしかない |
 | 表示の見え方 | 取れない。見てもらうしかない |

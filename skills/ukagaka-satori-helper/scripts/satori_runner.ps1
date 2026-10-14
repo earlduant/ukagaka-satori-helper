@@ -49,16 +49,10 @@
 #   変数は保持される。連続する動作はここに並べて書く。
 #
 # リクエストの文字コード
-#   既定は Shift_JIS。Charset: の行で変えられる。
-#
-#     Charset: UTF-8      ← 最初の [イベント名] より前に書くと、全イベントの既定になる
-#
-#     [OnTest]
-#     Charset: UTF-8      ← イベントの中に書くと、そのイベントだけ
-#
-#   書いた Charset でリクエストを組み、ヘッダにもその名前を書く。
-#   UTF-8 版の里々はリクエストの Charset に合わせて応答する。Shift_JIS 版は
-#   Shift_JIS しか扱わないので、UTF-8 で送っても Shift_JIS で返り、中身は化ける。
+#   里々が UTF-8 を扱えるなら UTF-8、扱えなければ Shift_JIS で送る。
+#   UTF-8 を扱える里々には、SSP も UTF-8 で送っている。
+#   load の直後に version を UTF-8 で問い合わせ、返ってきた Charset で見分ける。
+#   UTF-8 を扱えない里々に UTF-8 で送ると、中身が化け、日本語のイベント名は見つからない。
 #
 #   応答は、応答の Charset ヘッダに書かれた文字コードで読む。
 #
@@ -99,7 +93,10 @@
 # SHIORI/3.0 では load / request に渡した HGLOBAL の所有権が SHIORI 側へ移る。
 # 呼び出し側が解放するとプロセスごと落ちる。解放するのは request の戻り値だけ。
 #
-# 内部ログは Shift_JIS で送られてくる。1メッセージが1行。
+# 内部ログの文字コードは satori.dll による。1メッセージが1行。
+#   logsend を持つ里々   load の前に logsend で受信ウィンドウを登録する。UTF-16 で届く
+#   持たない里々         FindWindow で見つけてもらう。Shift_JIS で届き、
+#                        Shift_JIS に無い文字は ? になる（応答の側は化けない）
 #
 # 辞書の読み込みエラーは load() の戻り値に出ない（カッコが閉じていなくても
 # 成功が返る）。内部ログにしか出ないので、そこから拾う。
@@ -161,6 +158,15 @@ SSP を介さずに satori.dll へ SHIORI イベントを送り、応答を取�
 '@
 
 if (-not $SeqFile -or -not $MasterDir -or -not $WorkDir) { Write-Output $usage; exit 2 }
+
+# 絶対パスにしてから使う。辞書のコピー先は本番のパスとの差で決めるため、相対のままだと狂う。
+# 末尾の \ は落とす。空白を含むパスを 32bit へ渡し直すとき、\" が引用符の
+# エスケープと解釈され、後ろの引数とつながる
+$SeqFile   = [IO.Path]::GetFullPath($SeqFile)
+$MasterDir = [IO.Path]::GetFullPath($MasterDir).TrimEnd('\')
+$WorkDir   = [IO.Path]::GetFullPath($WorkDir).TrimEnd('\')
+if ($SaveData) { $SaveData = [IO.Path]::GetFullPath($SaveData) }
+
 if (-not (Test-Path $SeqFile))   { Write-Output "シーケンスファイルがありません: $SeqFile"; exit 2 }
 if (-not (Test-Path $MasterDir)) { Write-Output "フォルダがありません: $MasterDir"; exit 2 }
 if ($SaveData -and -not (Test-Path $SaveData)) { Write-Output "セーブデータがありません: $SaveData"; exit 2 }
@@ -259,7 +265,10 @@ public class SatoriShiori
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     delegate bool LoaduDelegate(IntPtr h, int len);
 
-    // 内部ログは Shift_JIS で送られてくる
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate int LogsendDelegate(IntPtr hwnd);
+
+    // logsend の無い里々は、内部ログを Shift_JIS で送ってくる
     public static readonly Encoding Enc = Encoding.GetEncoding(932);
     public static readonly Encoding Utf8 = new UTF8Encoding(false);
 
@@ -287,6 +296,17 @@ public class SatoriShiori
         string path = dir + Path.DirectorySeparatorChar;
 
         IntPtr module = LoadLibraryW(Path.Combine(dir, "satori.dll"));
+
+        // logsend があれば受信ウィンドウを登録する。以後の内部ログは UTF-16 で届く。
+        // 無ければ里々が FindWindow で探し、Shift_JIS で送ってくる
+        IntPtr logsend = (module == IntPtr.Zero) ? IntPtr.Zero : GetProcAddress(module, "logsend");
+        if (logsend != IntPtr.Zero && SatoriLog.Window != IntPtr.Zero)
+        {
+            SatoriLog.Unicode = true;
+            LogsendDelegate s = (LogsendDelegate)Marshal.GetDelegateForFunctionPointer(logsend, typeof(LogsendDelegate));
+            s(SatoriLog.Window);
+        }
+
         IntPtr loadu = (module == IntPtr.Zero) ? IntPtr.Zero : GetProcAddress(module, "loadu");
         if (loadu != IntPtr.Zero)
         {
@@ -296,6 +316,15 @@ public class SatoriShiori
         }
         byte[] a = Encoding.Default.GetBytes(path);
         return load(ToGlobal(a), a.Length);
+    }
+
+    // UTF-8 を扱える里々なら UTF-8、扱えなければ Shift_JIS。
+    // version を UTF-8 で問い合わせ、返ってきた Charset で見分ける。辞書は動かず、変数も変わらない
+    public static string DefaultCharset()
+    {
+        string res;
+        Request("GET SHIORI/3.0\r\nCharset: UTF-8\r\nSender: SSP\r\nSecurityLevel: local\r\nID: version\r\n\r\n", Utf8, out res);
+        return (EncodingOf(res) is UTF8Encoding) ? "UTF-8" : "Shift_JIS";
     }
 
     // charset はリクエストを組んだ文字コード。応答はその Charset ヘッダで読む
@@ -402,6 +431,10 @@ public class SatoriLog
 
     public static List<string> Lines = new List<string>();
 
+    // logsend で登録した場合は UTF-16。1メッセージごとに末尾へ \n が1つ付く
+    public static bool Unicode = false;
+    public static IntPtr Window { get { return window; } }
+
     static WndProcDelegate holder;      // GC されるとネイティブから呼べなくなる
     static IntPtr window = IntPtr.Zero;
     static IntPtr instance = IntPtr.Zero;
@@ -420,7 +453,20 @@ public class SatoriLog
                     byte[] data = new byte[cds.cbData];
                     Marshal.Copy(cds.lpData, data, 0, cds.cbData);
                     // cbData は終端 NUL を含む
-                    Lines.Add(SatoriShiori.Enc.GetString(data).TrimEnd('\0'));
+                    if (!Unicode)
+                    {
+                        Lines.Add(SatoriShiori.Enc.GetString(data).TrimEnd('\0'));
+                    }
+                    else
+                    {
+                        string s = Encoding.Unicode.GetString(data).TrimEnd('\0');
+                        // dwData 17 は登録直後に届く空の通知で、ログではない
+                        if (cds.dwData.ToInt32() != 17 || s.Length > 0)
+                        {
+                            if (s.EndsWith("\n")) { s = s.Substring(0, s.Length - 1); }
+                            Lines.Add(s);
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -508,34 +554,26 @@ public class SatoriSeq
     public class Event
     {
         public string Name;
-        public string Charset;
         public List<string> Headers = new List<string>();
 
-        public string Request
+        public string Request(string charset)
         {
-            get
-            {
-                StringBuilder sb = new StringBuilder();
-                sb.Append("GET SHIORI/3.0\r\n");
-                sb.Append("Charset: " + Charset + "\r\n");
-                sb.Append("Sender: SSP\r\n");
-                sb.Append("SecurityLevel: local\r\n");
-                sb.Append("ID: " + Name + "\r\n");
-                foreach (string h in Headers) { sb.Append(h + "\r\n"); }
-                sb.Append("\r\n");
-                return sb.ToString();
-            }
+            StringBuilder sb = new StringBuilder();
+            sb.Append("GET SHIORI/3.0\r\n");
+            sb.Append("Charset: " + charset + "\r\n");
+            sb.Append("Sender: SSP\r\n");
+            sb.Append("SecurityLevel: local\r\n");
+            sb.Append("ID: " + Name + "\r\n");
+            foreach (string h in Headers) { sb.Append(h + "\r\n"); }
+            sb.Append("\r\n");
+            return sb.ToString();
         }
     }
-
-    static readonly System.Text.RegularExpressions.Regex CHARSET =
-        new System.Text.RegularExpressions.Regex(@"^Charset\s*:\s*(.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public static List<Event> Parse(string path)
     {
         List<Event> list = new List<Event>();
         Event cur = null;
-        string defaultCharset = "Shift_JIS";
 
         foreach (string raw in File.ReadAllLines(path, Encoding.UTF8))
         {
@@ -546,21 +584,11 @@ public class SatoriSeq
             {
                 cur = new Event();
                 cur.Name = line.Substring(1, line.Length - 2).Trim();
-                cur.Charset = defaultCharset;
                 list.Add(cur);
                 continue;
             }
 
-            System.Text.RegularExpressions.Match m = CHARSET.Match(line);
-            if (m.Success)
-            {
-                // 最初の [イベント名] より前なら既定、イベントの中ならそのイベントだけ
-                if (cur == null) { defaultCharset = m.Groups[1].Value.Trim(); }
-                else { cur.Charset = m.Groups[1].Value.Trim(); }
-                continue;
-            }
-
-            // 最初の [イベント名] より前の、Charset 以外の行は捨てる
+            // 最初の [イベント名] より前の行は捨てる
             if (cur == null) { continue; }
             cur.Headers.Add(line);
         }
@@ -583,7 +611,11 @@ public class SatoriReport
             if (log[i].IndexOf("カッコの対応関係") < 0) { continue; }
 
             output.Add("!!! 辞書の読み込みエラー !!!");
-            if (i > 0) { output.Add("  " + log[i - 1]); }   // ファイル名は直前の行に出る
+            // ファイル名は手前の空でない行に出る。版によって間に空行が挟まる
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (log[j].Trim().Length > 0) { output.Add("  " + log[j]); break; }
+            }
             output.Add("  " + log[i]);
             output.Add("  → 閉じていない「（」のある定義から、ファイルの末尾までが読まれていません。");
             output.Add("");
@@ -647,6 +679,7 @@ public class SatoriRunner
             Environment.CurrentDirectory = runDir;
 
             loaded = SatoriShiori.Load(runDir);
+            string charset = loaded ? SatoriShiori.DefaultCharset() : "Shift_JIS";
             SatoriLog.Pump();
             SatoriLog.Flush("load");
 
@@ -659,24 +692,17 @@ public class SatoriRunner
                 return output.ToArray();
             }
 
+            Encoding enc = SatoriShiori.EncodingOf(charset);
             int errors = 0;
             foreach (SatoriSeq.Event e in events)
             {
-                Encoding enc = SatoriShiori.EncodingOf(e.Charset);
                 string resCharset;
-                string response = SatoriShiori.Request(e.Request, enc, out resCharset);
+                string response = SatoriShiori.Request(e.Request(charset), enc, out resCharset);
                 SatoriLog.Pump();
                 SatoriLog.Flush(e.Name);
 
                 if (SatoriReport.HasError(response)) { errors++; }
                 SatoriReport.Response(e.Name, response, output);
-
-                if (enc is UTF8Encoding && resCharset.Length > 0 && !(SatoriShiori.EncodingOf(resCharset) is UTF8Encoding))
-                {
-                    output.Add("!!! UTF-8 で送りましたが、" + resCharset + " で返りました !!!");
-                    output.Add("  この satori.dll は Shift_JIS 版で、UTF-8 のリクエストを読めません。Reference の中身は化けています。");
-                    output.Add("");
-                }
             }
 
             if (errors > 0) { output.Add("里々がエラーを報告したイベント: " + errors + " 件"); }

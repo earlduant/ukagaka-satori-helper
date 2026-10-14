@@ -2,12 +2,11 @@
 #
 # 里々が返したさくらスクリプトが壊れていないかを検査する。
 #
-#   powershell -ExecutionPolicy Bypass -File satori_script.ps1 <テスターの出力ファイル> <作業フォルダ>
+#   powershell -ExecutionPolicy Bypass -File satori_script.ps1 <テスターの出力ファイル>
 #
 #     テスターの出力ファイル  satori_runner.ps1 の標準出力を保存したもの
-#     作業フォルダ    SKILL.md の「作業フォルダ」
 #
-#   2つとも必須。オプションは無い。
+#   必須。オプションは無い。
 #
 # 役割の分担
 #   里々   さくらスクリプト文字列を構築して返す。
@@ -82,8 +81,7 @@
 # 日本語が壊れる。
 
 param(
-    [Parameter(Position = 0)] [string] $ResultFile,
-    [Parameter(Position = 1)] [string] $WorkDir
+    [Parameter(Position = 0)] [string] $ResultFile
 )
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
@@ -91,15 +89,14 @@ try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } 
 $usage = @'
 里々が返したさくらスクリプトが壊れていないかを検査する。
 
-  satori_script.ps1 <テスターの出力ファイル> <作業フォルダ>
+  satori_script.ps1 <テスターの出力ファイル>
 
     テスターの出力ファイル  satori_runner.ps1 の標準出力を保存したもの
-    作業フォルダ    SKILL.md の「作業フォルダ」
 
   問題があるときだけ報告する。応答を読むための道具ではない。
 '@
 
-if (-not $ResultFile -or -not $WorkDir) { Write-Output $usage; exit 2 }
+if (-not $ResultFile) { Write-Output $usage; exit 2 }
 if (-not (Test-Path $ResultFile)) { Write-Output "ファイルがありません: $ResultFile"; exit 2 }
 
 function Get-SatoriTags {

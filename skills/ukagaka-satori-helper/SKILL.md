@@ -23,7 +23,7 @@ scripts\      実行する。使い方は各ファイルの冒頭コメントに
   satori_script.ps1     返ったさくらスクリプトが壊れていないか検査する
   satori_lint.ps1       里々もテスターも報告しない誤りを検出する
   satori_log.ps1        里々の内部ログに問い合わせる
-  Get-GhostInfo.ps1     動作中の SSP から値を取る
+  Get-GhostInfo.ps1     動作中の SSP と里々から値を取る
 ```
 
 `Get-GhostInfo.ps1` だけは、**カレントディレクトリをゴーストのルートにして呼ぶ。**
@@ -97,8 +97,7 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 - 本番のゴーストフォルダ（`ghost\master` とその親）
 - いま作業しているディレクトリ
 
-`<作業フォルダ>` を受け取るのは `satori_dic` `satori_runner` `satori_script` `satori_log` の4本で、
-4本とも同じものを渡してよい。`satori_lint` と `Get-GhostInfo` は受け取らない。
+`<作業フォルダ>` を受け取るのは `satori_runner` だけ。
 
 ---
 
@@ -122,7 +121,7 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 **1. 辞書の文字コードを確かめる**
 
 ```
-powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\master> <作業フォルダ>
+powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\master>
 ```
 
 「Shift_JIS が混じります」が返ったら、**以後の辞書の読み書きはすべて

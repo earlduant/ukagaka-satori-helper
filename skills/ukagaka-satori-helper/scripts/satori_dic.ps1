@@ -6,24 +6,24 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 <コマンド> <引数...>
 #
 # コマンド
-#   list <master> <作業フォルダ>
+#   list <master>
 #       対象ファイルを列挙。結果が「Shift_JIS が混じります」なら、以後の読み書きはすべて本ツールを通す。
 #       「UTF-8 です」なら直接編集してよい。
-#   find <master> <作業フォルダ> <語>
+#   find <master> <語>
 #       対象ファイルから指定した文字列を部分一致で検索する（大小文字・全角半角を区別）。
-#   read <ファイル> <作業フォルダ> <開始行> <終了行>
+#   read <ファイル> <開始行> <終了行>
 #       指定範囲の行を読む。終了行が総行数を超えたら末尾まで返す。行末の空白を警告する。
-#   write <ファイル> <作業フォルダ> <内容ファイル> <開始行> <終了行>
+#   write <ファイル> <内容ファイル> <開始行> <終了行>
 #       指定範囲を内容ファイルの中身で置き換える。終了行が総行数を超えたら拒否。
-#   insert <ファイル> <作業フォルダ> <内容ファイル> <行番号>
+#   insert <ファイル> <内容ファイル> <行番号>
 #       指定した行の「前」に内容ファイルを挿入する。末尾追加は <総行数+1> を指定。
-#   create <ファイル> <作業フォルダ> <内容ファイル>
+#   create <ファイル> <内容ファイル>
 #       新規作成。satori_bootconf.txt の設定に従った文字コードで保存される（BOMなし）。
 #
 # BOM 付き UTF-8 のファイルは、設定にかかわらず UTF-8 として読み書きする（BOM は残す）。
 #
 # 内容ファイルについて (write / insert / create)
-#   書き込む中身を UTF-8 で書いたファイル。絶対パスで渡すこと。
+#   書き込む中身を UTF-8 で書いたファイル。
 #   一時領域のフォルダに作る。同じファイルを使い回してよい（追記せず全部書き直す）。
 #   末尾の改行の有無は結果に影響しない。
 #
@@ -34,15 +34,14 @@
 param(
     [Parameter(Position=0)] [string] $Command,
     [Parameter(Position=1)] [string] $Target,
-    [Parameter(Position=2)] [string] $WorkDir,
-    [Parameter(Position=3)] [AllowEmptyString()] [string] $Arg1,
-    [Parameter(Position=4)] [AllowEmptyString()] [string] $Arg2,
-    [Parameter(Position=5)] [AllowEmptyString()] [string] $Arg3
+    [Parameter(Position=2)] [AllowEmptyString()] [string] $Arg1,
+    [Parameter(Position=3)] [AllowEmptyString()] [string] $Arg2,
+    [Parameter(Position=4)] [AllowEmptyString()] [string] $Arg3
 )
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
 
-if (-not $Command -or -not $Target -or -not $WorkDir) {
+if (-not $Command -or -not $Target) {
     Write-Output "引数が足りません"
     exit 1
 }
@@ -245,7 +244,7 @@ public class SatoriDic
                     sjis.GetBytes(ch);
                 } catch {
                     int cp = char.ConvertToUtf32(ch, 0);
-                    return string.Format("拒否: CP932 に変換できない文字があります\n  内容ファイル {0}行目  {1} (U+{2:X4})", i + 1, ch, cp);
+                    return string.Format("拒否: CP932 に変換できない文字があります\n  内容ファイル {0}行目  {1} (U+{2:X4})\n  画面に出す文字なら \\_u[0x{2:X4}] と書けば出せます", i + 1, ch, cp);
                 }
             }
         }
@@ -537,10 +536,12 @@ public class SatoriDic
         outLines.Add(string.Format("  作成      {0}行", cd.lines.Length));
     }
 
-    public static string[] Run(string cmd, string target, string workDir, string arg1, string arg2, string arg3) {
+    public static string[] Run(string cmd, string target, string arg1, string arg2, string arg3) {
         ExitCode = 0;
         List<string> outLines = new List<string>();
         try {
+            // ghost\master の判定はパスの文字列で行うので、絶対パスにしてから渡す
+            target = Path.GetFullPath(target);
             if (cmd == "list") RunList(target, outLines);
             else if (cmd == "find") RunFind(target, arg1, outLines);
             else if (cmd == "read") RunRead(target, arg1, arg2, outLines);
@@ -562,7 +563,7 @@ public class SatoriDic
 
 Add-Type -TypeDefinition $code -Language CSharp
 
-$ret = [SatoriDic]::Run($Command, $Target, $WorkDir, $Arg1, $Arg2, $Arg3)
+$ret = [SatoriDic]::Run($Command, $Target, $Arg1, $Arg2, $Arg3)
 $ret | ForEach-Object { Write-Output $_ }
 exit [SatoriDic]::ExitCode
 

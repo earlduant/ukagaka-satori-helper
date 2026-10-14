@@ -2,14 +2,13 @@
 #
 # 里々の内部ログに問い合わせる。
 #
-#   powershell -ExecutionPolicy Bypass -File satori_log.ps1 <内部ログのパス> <作業フォルダ> <問い合わせ> <語>
+#   powershell -ExecutionPolicy Bypass -File satori_log.ps1 <内部ログのパス> <問い合わせ> <語>
 #
 #     内部ログのパス  テスターが <作業フォルダ>\satori_runner\internal.log に書いたもの
-#     作業フォルダ    SKILL.md の「作業フォルダ」
 #     問い合わせ      problems / event / trace
 #     語              event はイベント名、trace は変数名。problems では "" を渡す
 #
-#   4つとも必須。オプションは無い。
+#   3つとも必須。オプションは無い。
 #
 # 使い方
 #   応答が期待と違うときに、原因を辿るために引く。
@@ -68,9 +67,8 @@
 
 param(
     [Parameter(Position = 0)] [string] $LogPath,
-    [Parameter(Position = 1)] [string] $WorkDir,
-    [Parameter(Position = 2)] [string] $Query,
-    [Parameter(Position = 3)] [AllowEmptyString()] [string] $Word
+    [Parameter(Position = 1)] [string] $Query,
+    [Parameter(Position = 2)] [AllowEmptyString()] [string] $Word
 )
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
@@ -78,10 +76,9 @@ try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } 
 $usage = @'
 里々の内部ログに問い合わせる。
 
-  satori_log.ps1 <内部ログのパス> <作業フォルダ> <問い合わせ> <語>
+  satori_log.ps1 <内部ログのパス> <問い合わせ> <語>
 
     内部ログのパス  テスターが書いた internal.log
-    作業フォルダ    SKILL.md の「作業フォルダ」
     問い合わせ      problems / event / trace
     語              event はイベント名、trace は変数名。problems では "" を渡す
 
@@ -90,7 +87,7 @@ $usage = @'
   trace     変数の代入と参照を追う
 '@
 
-if (-not $LogPath -or -not $WorkDir -or -not $Query) { Write-Output $usage; exit 1 }
+if (-not $LogPath -or -not $Query) { Write-Output $usage; exit 1 }
 if (-not (Test-Path $LogPath)) { Write-Output "ログファイルがありません: $LogPath"; exit 2 }
 if (($Query -eq 'event' -or $Query -eq 'trace') -and -not $Word) { Write-Output $usage; exit 1 }
 
@@ -185,6 +182,7 @@ try {
             if ($found -eq 0) { Write-Output "その変数は出てきません: $Word" }
         }
         default {
+            Write-Output $usage
             exit 1
         }
     }
