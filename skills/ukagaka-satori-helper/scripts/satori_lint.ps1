@@ -47,9 +47,12 @@
 #
 # replace.txt を適用してから検査する
 #   里々が実際に見るのは置換後の文字列なので、同じものを検査する。
-#   辞書と replace.txt は別の設定で文字コードが決まる。
-#   辞書は is_utf8_dic、replace.txt は is_utf8_replace。is_utf8_all は両方に効く。
-#   BOM 付き UTF-8 のファイルは、設定にかかわらず UTF-8 として読む（里々と同じ）。
+#   文字コードは里々の仕様で決める。
+#     satori_bootconf.txt で UTF-8 に固定されていれば UTF-8
+#     （辞書は is_utf8_dic、replace.txt は is_utf8_replace。is_utf8_all は両方に効く）
+#     ACP 版（Mc1XX）: それ以外は Shift_JIS。BOM 付きのファイルは検査しない
+#     Unicode 版（Mc2XX）: BOM 付きか、UTF-8 の規則に反するバイト列がなければ UTF-8。それ以外は Shift_JIS
+#     satori.dll が無ければ文字コードを決められないので、検査しない
 #   行ごとに置換するので行番号は保たれる。
 #   出力するファイル名と行番号は本番の辞書に対応する。修正するのは本番。
 #
@@ -75,6 +78,7 @@ $usage = @'
 
 if (-not $MasterDir) { Write-Output $usage; exit 1 }
 if (-not (Test-Path $MasterDir)) { Write-Output "見つかりません: $MasterDir"; exit 1 }
+if (-not (Test-Path (Join-Path $MasterDir 'satori.dll'))) { Write-Output "satori.dll がありません: $MasterDir"; exit 1 }
 
 $code = @'
 using System;
@@ -781,17 +785,40 @@ public class SatoriLint
     // 入口
     // -----------------------------------------------------------------------
 
-    public static string[] Run(string dir, string encName, string replacePath, string encRepName)
+    // Unicode 版（Mc2XX）は文字列を UTF-16 で持つ
+    static bool IsUnicode(string dir)
+    {
+        Encoding latin1 = Encoding.GetEncoding(28591);
+        return latin1.GetString(File.ReadAllBytes(Path.Combine(dir, "satori.dll")))
+            .Contains(latin1.GetString(Encoding.Unicode.GetBytes("satori_bootconf.txt")));
+    }
+
+    static bool IsValidUtf8(byte[] b)
+    {
+        try { new UTF8Encoding(false, true).GetString(b); return true; }
+        catch (DecoderFallbackException) { return false; }
+    }
+
+    // 里々がこのファイルを読む文字コードで読む。読まないファイルは null
+    static string ReadSatoriText(string path, bool unicode, bool fixedUtf8)
+    {
+        byte[] b = File.ReadAllBytes(path);
+        bool bom = b.Length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF;
+        if (fixedUtf8 || (unicode && (bom || IsValidUtf8(b)))) { return new UTF8Encoding(false).GetString(b, bom ? 3 : 0, b.Length - (bom ? 3 : 0)); }
+        return bom ? null : Encoding.GetEncoding(932).GetString(b);
+    }
+
+    public static string[] Run(string dir, bool dicUtf8, string replacePath, bool repUtf8)
     {
         issues.Clear();
         ErrorCount = 0;
-        Encoding enc = Encoding.GetEncoding(encName);
+        bool unicode = IsUnicode(dir);
 
         List<string[]> rules = new List<string[]>();
-        if (File.Exists(replacePath))
+        string repText = File.Exists(replacePath) ? ReadSatoriText(replacePath, unicode, repUtf8) : null;
+        if (repText != null)
         {
-            Encoding encR = Encoding.GetEncoding(encRepName);
-            foreach (string line in File.ReadAllLines(replacePath, encR))
+            foreach (string line in repText.Replace("\r\n", "\n").Split('\n'))
             {
                 if (line.Length == 0 || line[0] == '＃') { continue; }
                 int tab = line.IndexOf('\t');
@@ -820,9 +847,10 @@ public class SatoriLint
         {
             string fname = path.Substring(dir.Length).TrimStart('\\', '/');
             string raw;
-            // ReadAllText は BOM を見て UTF-8 と判別する。BOM が無ければ設定どおりの文字コード
-            try { raw = File.ReadAllText(path, enc).Replace("\r\n", "\n"); }
+            try { raw = ReadSatoriText(path, unicode, dicUtf8); }
             catch (Exception ex) { output.Add("読み込み失敗: " + fname + " (" + ex.Message + ")"); continue; }
+            if (raw == null) { output.Add("検査しない: " + fname + " (この satori.dll は BOM 付きのファイルを読めません)"); continue; }
+            raw = raw.Replace("\r\n", "\n");
 
             string text = StripComments(raw);
             string[] lines = text.Split('\n');
@@ -897,15 +925,15 @@ public class SatoriLint
 
 Add-Type -TypeDefinition $code -Language CSharp
 
-$encDic = 'shift_jis'
-$encRep = 'shift_jis'
+$dicUtf8 = $false
+$repUtf8 = $false
 $bootconf = Join-Path $MasterDir 'satori_bootconf.txt'
 if (Test-Path $bootconf) {
     $conf = [IO.File]::ReadAllText($bootconf, [Text.Encoding]::ASCII)
-    if ($conf -match 'is_utf8_dic\s*,\s*true'     -or $conf -match 'is_utf8_all\s*,\s*true') { $encDic = 'utf-8' }
-    if ($conf -match 'is_utf8_replace\s*,\s*true' -or $conf -match 'is_utf8_all\s*,\s*true') { $encRep = 'utf-8' }
+    if ($conf -match 'is_utf8_dic\s*,\s*true'     -or $conf -match 'is_utf8_all\s*,\s*true') { $dicUtf8 = $true }
+    if ($conf -match 'is_utf8_replace\s*,\s*true' -or $conf -match 'is_utf8_all\s*,\s*true') { $repUtf8 = $true }
 }
 
-[SatoriLint]::Run($MasterDir, $encDic, (Join-Path $MasterDir 'replace.txt'), $encRep) | ForEach-Object { Write-Output $_ }
+[SatoriLint]::Run($MasterDir, $dicUtf8, (Join-Path $MasterDir 'replace.txt'), $repUtf8) | ForEach-Object { Write-Output $_ }
 if ([SatoriLint]::ErrorCount -gt 0) { exit 1 } else { exit 0 }
 

@@ -18,9 +18,13 @@
 #   insert <ファイル> <内容ファイル> <行番号>
 #       指定した行の「前」に内容ファイルを挿入する。末尾追加は <総行数+1> を指定。
 #   create <ファイル> <内容ファイル>
-#       新規作成。satori_bootconf.txt の設定に従った文字コードで保存される（BOMなし）。
+#       新規作成。satori_bootconf.txt で UTF-8 に固定されていれば UTF-8、それ以外は Shift_JIS で保存される（BOMなし）。
 #
-# BOM 付き UTF-8 のファイルは、設定にかかわらず UTF-8 として読み書きする（BOM は残す）。
+# 文字コードは里々の仕様で決める。
+#   satori_bootconf.txt で UTF-8 に固定されていれば UTF-8
+#   ACP 版（Mc1XX）: それ以外は Shift_JIS。BOM 付きのファイルは拒否する
+#   Unicode 版（Mc2XX）: BOM 付きか、UTF-8 の規則に反するバイト列がなければ UTF-8。それ以外は Shift_JIS
+# BOM は残す。
 #
 # 内容ファイルについて (write / insert / create)
 #   書き込む中身を UTF-8 で書いたファイル。
@@ -72,10 +76,10 @@ public class SatoriDic
     }
 
     class BootConf {
+        public bool unicode;
         public bool dic;
         public bool replace;
         public bool all;
-        public bool AllUtf8 { get { return all || (dic && replace); } }
     }
 
     static string FindMaster(string path, out string error) {
@@ -101,8 +105,16 @@ public class SatoriDic
         return master;
     }
 
+    // Unicode 版（Mc2XX）は文字列を UTF-16 で持つ
+    static bool IsUnicode(string master) {
+        Encoding latin1 = Encoding.GetEncoding(28591);
+        return latin1.GetString(File.ReadAllBytes(Path.Combine(master, "satori.dll")))
+            .Contains(latin1.GetString(Encoding.Unicode.GetBytes("satori_bootconf.txt")));
+    }
+
     static BootConf ReadBootConf(string master) {
         BootConf c = new BootConf();
+        c.unicode = IsUnicode(master);
         string p = Path.Combine(master, "satori_bootconf.txt");
         if (File.Exists(p)) {
             string t = File.ReadAllText(p, Encoding.ASCII);
@@ -122,9 +134,8 @@ public class SatoriDic
         }
     }
 
+    // 里々がこのファイルを読む文字コード。読まないファイルは null
     static Encoding GetEncoding(BootConf c, string file) {
-        // BOM 付き UTF-8 は設定にかかわらず UTF-8（里々と同じ判別）
-        if (HasBom(file)) return new UTF8Encoding(false);
         string name = Path.GetFileName(file).ToLower();
         bool u = false;
         if ((name.StartsWith("dic") && name.EndsWith(".txt")) || name == "satori_conf.txt") {
@@ -132,7 +143,18 @@ public class SatoriDic
         } else if (name == "replace.txt" || name == "replace_after.txt") {
             u = c.replace || c.all;
         }
-        return u ? new UTF8Encoding(false) : Encoding.GetEncoding(932);
+        if (u || (c.unicode && (HasBom(file) || IsValidUtf8(file)))) return new UTF8Encoding(false);
+        return HasBom(file) ? null : Encoding.GetEncoding(932);
+    }
+
+    static bool IsValidUtf8(string file) {
+        if (!File.Exists(file)) return false;
+        try {
+            new UTF8Encoding(false, true).GetString(File.ReadAllBytes(file));
+            return true;
+        } catch (DecoderFallbackException) {
+            return false;
+        }
     }
 
     static bool IsSatoriFile(string file) {
@@ -190,6 +212,8 @@ public class SatoriDic
         FileData fd = new FileData();
         fd.enc = enc;
         if (!File.Exists(path)) { fd.error = "拒否: ファイルがありません"; return fd; }
+        if (enc == null) { fd.error = "拒否: この satori.dll は BOM 付きのファイルを読めません"; return fd; }
+        string encError = "拒否: " + (enc is UTF8Encoding ? "UTF-8" : "Shift_JIS") + " として読めません";
         byte[] bytes = File.ReadAllBytes(path);
         int offset = 0;
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
@@ -201,12 +225,12 @@ public class SatoriDic
         string text = enc.GetString(bytes, offset, bytes.Length - offset);
         byte[] reencoded = enc.GetBytes(text);
         if (reencoded.Length != bytes.Length - offset) {
-            fd.error = "拒否: 文字コードが satori_bootconf.txt の設定と合いません";
+            fd.error = encError;
             return fd;
         }
         for (int i=0; i<reencoded.Length; i++) {
             if (reencoded[i] != bytes[offset + i]) {
-                fd.error = "拒否: 文字コードが satori_bootconf.txt の設定と合いません";
+                fd.error = encError;
                 return fd;
             }
         }
@@ -288,15 +312,17 @@ public class SatoriDic
         string[] allFiles = Directory.GetFiles(master, "*", SearchOption.AllDirectories);
         List<string> valid = new List<string>();
         List<string> broken = new List<string>();
+        bool hasSjis = false;
 
         foreach(string f in allFiles) {
             if (!IsSatoriFile(f)) continue;
             Encoding enc = GetEncoding(conf, f);
             FileData fd = ReadFile(f, enc);
             if (fd.error != null) {
-                broken.Add(f + "|" + fd.error.Replace("拒否: ", "").Replace(" satori_bootconf.txt の", ""));
+                broken.Add(f + "|" + fd.error.Replace("拒否: ", ""));
             } else {
                 bool bom = fd.bom.Length > 0;
+                if (!(enc is UTF8Encoding)) hasSjis = true;
                 valid.Add(f + "|" + (enc is UTF8Encoding ? (bom ? "UTF-8 BOM" : "UTF-8") : "Shift_JIS") + "|" + fd.lines.Length);
             }
         }
@@ -306,7 +332,7 @@ public class SatoriDic
             return;
         }
 
-        if (conf.AllUtf8) {
+        if (!hasSjis && (conf.unicode || conf.all || (conf.dic && conf.replace))) {
             outLines.Add("このゴーストは UTF-8 です。直接編集しても壊れません。");
             outLines.Add("ただし行末の空白と制御文字は、標準のツールでは見えません。");
         } else {
@@ -339,7 +365,7 @@ public class SatoriDic
             Encoding enc = GetEncoding(conf, f);
             FileData fd = ReadFile(f, enc);
             if (fd.error != null) {
-                broken.Add(f + "|" + fd.error.Replace("拒否: ", "").Replace(" satori_bootconf.txt の", ""));
+                broken.Add(f + "|" + fd.error.Replace("拒否: ", ""));
                 continue;
             }
             for (int i=0; i<fd.lines.Length; i++) {
