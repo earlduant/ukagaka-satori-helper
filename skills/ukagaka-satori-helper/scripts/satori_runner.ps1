@@ -320,10 +320,14 @@ public class SatoriShiori
 
     // UTF-8 を扱える里々なら UTF-8、扱えなければ Shift_JIS。
     // version を UTF-8 で問い合わせ、返ってきた Charset で見分ける。辞書は動かず、変数も変わらない
-    public static string DefaultCharset()
+    // 版は Value に返る
+    public static string DefaultCharset(out string version)
     {
         string res;
-        Request("GET SHIORI/3.0\r\nCharset: UTF-8\r\nSender: SSP\r\nSecurityLevel: local\r\nID: version\r\n\r\n", Utf8, out res);
+        string response = Request("GET SHIORI/3.0\r\nCharset: UTF-8\r\nSender: SSP\r\nSecurityLevel: local\r\nID: version\r\n\r\n", Utf8, out res);
+        System.Text.RegularExpressions.Match m =
+            System.Text.RegularExpressions.Regex.Match(response, @"(?m)^Value:[ \t]*([^\r\n]*)");
+        version = m.Success ? m.Groups[1].Value.Trim() : "";
         return (EncodingOf(res) is UTF8Encoding) ? "UTF-8" : "Shift_JIS";
     }
 
@@ -679,7 +683,8 @@ public class SatoriRunner
             Environment.CurrentDirectory = runDir;
 
             loaded = SatoriShiori.Load(runDir);
-            string charset = loaded ? SatoriShiori.DefaultCharset() : "Shift_JIS";
+            string version = "";
+            string charset = loaded ? SatoriShiori.DefaultCharset(out version) : "Shift_JIS";
             SatoriLog.Pump();
             SatoriLog.Flush("load");
 
@@ -691,6 +696,9 @@ public class SatoriRunner
                 ExitCode = 4;
                 return output.ToArray();
             }
+
+            output.Add("里々: " + version + "（" + charset + "）");
+            output.Add("");
 
             Encoding enc = SatoriShiori.EncodingOf(charset);
             int errors = 0;

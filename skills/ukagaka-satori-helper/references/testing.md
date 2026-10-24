@@ -150,11 +150,14 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_log.ps1 <作業フォル
 ```
 
 `problems` で里々が見つけられなかったものが出る。まずこれを引く。
+`ErrorDescription:` が付いたイベントの原因は `problems` には出ない。`event <イベント名>` でその区間を見る。
 イベント名で区間を見るなら `event <イベント名>`、変数を追うなら `trace <変数名>`。
 
 ## 応答の読み方
 
 ```
+里々: phase Mc203-6（UTF-8）
+
 ========== OnBoot ==========
 SHIORI/3.0 200 OK
 Charset: UTF-8
@@ -170,10 +173,11 @@ Value: \0\s[0]\1\s[10]\0こんにちは。\e
 どれが選ばれたか・変数や単語群が展開されたか・意図した位置にタグが入ったか。
 本文を読み直すために応答を使わない。
 
-標準出力はファイルへ落とし、`Value:` の行だけを取り出す。
+標準出力はファイルへ落とし、見出し・`Value:`・エラーの行だけを取り出す。
+里々のエラーは `ErrorLevel:` `ErrorDescription:` のヘッダに出る。
 
 ```powershell
-(Get-Content <作業フォルダ>\runner_out.txt -Encoding UTF8) | Where-Object { $_ -like "Value:*" }
+(Get-Content <作業フォルダ>\runner_out.txt -Encoding UTF8) | Where-Object { $_ -match '^(=+ |Value:|Error|!!!|里々)' }
 ```
 
 どのトークが選ばれたかを見るなら、辞書に書いた語で絞る。
@@ -186,7 +190,7 @@ Value: \0\s[0]\1\s[10]\0こんにちは。\e
 |---|---|
 | `200 OK` | 応答が返った |
 | `204 No Content` | 応答が無い。原因は2つある（下記） |
-| 応答に里々のエラー文が混ざる | 引数の個数、計算不能な式など。里々が場所まで報告する |
+| `ErrorDescription:` が付く | 引数の個数、計算不能な式など。どの関数かが出る。エラー文は `Value:` にも混ざる |
 
 **`204` の原因は2つあり、応答だけでは区別できない。**
 
