@@ -5,8 +5,11 @@
 AI に里々のことを教え、AIに里々の機能を作らせたりバグ取りをさせるものです。
 
 ゴーストを一から作る場合は、
-[里々サンプルゴースト ポストと狛犬 ＋ バイブコーディングツールキット（里々/Win版）](https://github.com/ukatech/POST_and_KOMAINU_V2)
+[里々サンプルゴースト ポストと狛犬（POST_and_KOMAINU_V2）](https://github.com/ukatech/POST_and_KOMAINU_V2)
 から始められます。
+
+SSP での動作確認と nar の作成は、
+[ukagaka-developer](https://github.com/ukatech/ukagaka-developer) が受け持ちます。併用できます。
 
 ---
 
@@ -34,7 +37,7 @@ claude plugin install ukagaka-satori-helper --scope project
 開くのは `ghost` と `shell` が並んでいる階層です。その中の `master` ではありません。
 
 ```
-Ｒポストと狛犬\        ← ここ
+ゴーストのフォルダ\        ← ここ（サンプル「ポストと狛犬」なら POST_and_KOMAINU_V2）
   ghost\master\satori.dll
   shell\
 ```
@@ -74,7 +77,7 @@ github の earlduant/ukagaka-satori-helper を、このプロジェクトに入�
 中の `skills\ukagaka-satori-helper\` を、ゴーストのフォルダの `.agents\skills\` へ置きます。
 
 ```
-Ｒポストと狛犬\
+ゴーストのフォルダ\        （サンプル「ポストと狛犬」なら POST_and_KOMAINU_V2）
   .agents\
     skills\
       ukagaka-satori-helper\

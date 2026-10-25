@@ -66,9 +66,12 @@
 #   replace_after.txt と、サブフォルダ（再帰）の dic*.txt と saori\ だけ。
 #
 # 出力
-#   標準出力   イベントごとの応答
+#   標準出力   先頭に里々の版、イベントごとの応答、最後に satori_log.ps1 の problems の結果
 #   内部ログ   <作業フォルダ>\satori_runner\internal.log（常に出す）
 #              必要になったら satori_log.ps1 で引く
+#
+#   problems を最後に付けるのは、エラーがヘッダにも応答にも出ず、内部ログにしか
+#   残らないことがあるため。照合は satori_log.ps1 の1か所に置き、ここでは呼ぶだけ。
 
 #
 #   satori.dll が loadu を持っていれば、SSP と同じく loadu でパスを UTF-8 で渡す。
@@ -744,5 +747,12 @@ public class SatoriRunner
 Add-Type -TypeDefinition $code -Language CSharp
 
 [SatoriRunner]::Run($SeqFile, $runDir) | ForEach-Object { Write-Output $_ }
+
+$logFile = Join-Path $runDir 'internal.log'
+if (Test-Path $logFile) {
+    Write-Output ''
+    Write-Output '内部ログの problems:'
+    & (Join-Path $PSScriptRoot 'satori_log.ps1') $logFile problems ''
+}
 exit [SatoriRunner]::ExitCode
 

@@ -11,8 +11,8 @@
 #   3つとも必須。オプションは無い。
 #
 # 使い方
-#   応答が期待と違うときに、原因を辿るために引く。
-#   辞書を書き、テスターを通し、lint と応答検査を済ませた後、最後に使う。
+#   problems はテスターが最後に呼び、結果を出力に付ける。
+#   event と trace は、応答が期待と違うときに、原因を辿るために引く。
 #
 #   結果を利用者に見せない。AI が修正方針を決めるためだけに使う。
 #
@@ -22,13 +22,16 @@
 #   これは異常ではない。
 #
 # 問い合わせ
-#   problems  里々が見つけられなかったものを集める。まずこれを引く
+#   problems  里々が見つけられなかったものと、関数の失敗を集める
 #   event     イベント名に部分一致する区間を、中身ごと出す
 #   trace     変数の代入と参照を追う
 #
 # ログの読み方
 #   … not found.      変数・単語群・トークを探して見つからなかった
 #   not matched.      定義名の照合に失敗した。直前の行に探していた名前が出る
+#   … - calc : 400 …  ssu や SAORI の呼び出しが失敗した（版によっては出ない）
+#   式が計算不能です。  関数の失敗の文面。関数の値が変数に入るとトークに出ず、
+#                     ＄名前＝式 の失敗はトークごと 204 になるので、ここにしか残らない
 #   ＄<名前>＝         代入された
 #   （<名前>）→        参照された。→ の後ろが値
 #
@@ -82,7 +85,7 @@ $usage = @'
     問い合わせ      problems / event / trace
     語              event はイベント名、trace は変数名。problems では "" を渡す
 
-  problems  里々が見つけられなかったものを集める。まずこれを引く
+  problems  里々が見つけられなかったものと、関数の失敗を集める
   event     イベント名に部分一致する区間を、中身ごと出す
   trace     変数の代入と参照を追う
 '@
@@ -117,6 +120,9 @@ function Load-SatoriLog {
     return $sections
 }
 
+# 関数の失敗の文面。satori-docs の other/error-messages.md にあるもの
+$errorMessages = '式が計算不能です。|引数の個数が正しくありません。|引数が足りません。|引数が正しくありません。'
+
 function Get-Visible {
     param([string]$s)
     if ($s.IndexOf([char]1) -lt 0) { return $s }
@@ -139,20 +145,37 @@ try {
             $found = 0
             foreach ($sec in $sections) {
                 if ($sec.Name -eq 'load' -or $sec.Name -eq 'unload') { continue }
-                $hits = [System.Collections.Generic.List[string]]::new()
+                # 繰り返しで同じ行が数百出ることがある。行ごとに数える
+                $counts = [ordered]@{}
                 for ($i = 0; $i -lt $sec.Lines.Count; $i++) {
                     $s = $sec.Lines[$i].Trim()
-                    if ($s.IndexOf("not found.") -ge 0) {
-                        $hits.Add($s)
+                    $hit = $null
+                    if ($s.StartsWith("return:") -or $s.StartsWith("Value=")) {
+                        # 結果の文字列。エラー文が混ざっていても、出どころの行で拾う
+                    } elseif ($s.IndexOf("not found.") -ge 0) {
+                        $hit = $s
                     } elseif ($s.EndsWith("not matched.")) {
                         $ctx = if ($i -gt 0) { $sec.Lines[$i - 1].Trim() } else { "" }
-                        if ($ctx.Length -gt 0) { $hits.Add("$ctx  $s") } else { $hits.Add($s) }
+                        $hit = if ($ctx.Length -gt 0) { "$ctx  $s" } else { $s }
+                    } elseif ($s -match ' - \S+ : \d{3} ') {
+                        $hit = $s
+                    } elseif ($s -match $errorMessages) {
+                        # ＄名前＝式 の失敗は、式が次の行に出る
+                        $next = if ($i + 1 -lt $sec.Lines.Count) { $sec.Lines[$i + 1].Trim() } else { "" }
+                        $hit = if ($s -match "^($errorMessages)$" -and $next.Length -gt 0) { "$s  $next" } else { $s }
                     }
+                    if ($null -ne $hit) {
+                        if ($counts.Contains($hit)) { $counts[$hit]++ } else { $counts[$hit] = 1 }
+                    }
+                }
+                $hits = [System.Collections.Generic.List[string]]::new()
+                foreach ($k in $counts.Keys) {
+                    if ($counts[$k] -gt 1) { $hits.Add("$k  （×$($counts[$k])）") } else { $hits.Add($k) }
                 }
                 if ($hits.Count -gt 0) { $found++ }
                 Write-Hits $sec.Name $hits
             }
-            if ($found -eq 0) { Write-Output "里々が見つけられなかったものはありません。" }
+            if ($found -eq 0) { Write-Output "見つかったものはありません。" }
         }
         'event' {
             $found = 0

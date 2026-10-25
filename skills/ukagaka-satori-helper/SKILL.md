@@ -92,7 +92,7 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 エージェントが一時フォルダを持っているならそれでよい。
 無ければ OS の一時領域の下に専用のフォルダを作る。
 
-**作業フォルダとして、次の2つを渡さない。**スクリプトがこの中にファイルを作り、消す。
+**作業フォルダとして、次の2つを渡さない**。スクリプトがこの中にファイルを作り、消す。
 
 - 本番のゴーストフォルダ（`ghost\master` とその親）
 - いま作業しているディレクトリ
@@ -148,7 +148,7 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 
 **6. 通す** ── `references\testing.md`
 
-里々はエラーを出さない。**動かさずに「書けた」と報告しない。**
+里々は、誤りがあっても止まらない。誤りは自分から見に行かないと見つからない。**動かさずに「書けた」と報告しない。**
 
 **7. 報告する** ── `references\dialogue.md`
 
@@ -193,12 +193,14 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 里々の関数、さくらスクリプトのタグ、SHIORI イベント名 ──
 名前や書式が分からないものに当たったら、引く。
 
-**未知の仕様を推測で書かない。**必ず引いて確かめる。
+**未知の仕様を推測で書かない**。必ず引いて確かめる。
+引くとは、下のどれかの手段で仕様書を読むこと。MCP は早く引くための道具で、無くても引ける。
+どの手段でも確かめられなければ、何が確かめられなかったかを利用者に伝える。
 
 引き方は、`ukagaka-doc` MCP があるかどうかで分かれる。
 
 ```
-ukagaka-doc の search_docs が使える  → MCP から引く
+ukagaka-doc の search_docs が使える  → MCP から引く。引き方を変えても見つからなければ、ページを直接読む
 無い                                 → ページを直接読む
 ```
 
@@ -214,33 +216,49 @@ ukagaka-doc の search_docs が使える  → MCP から引く
 **0件は「存在しない」ではなく「引き方が違う」。**
 複合語は分解し、日本語の説明語・英語のタグ名・上位概念の3方向から引く。
 
+`source` で絞れる。使える値は `search_docs` の説明に並ぶもので、MCP の版で違う
+（里々は `satori_docs`、古い版は `satori_wiki`）。並んでいなければ付けずに引く。
+
+**大文字と小文字は区別されない。**`\C` で引くと `\c` も出て、先に並ぶことがある。
+大文字と小文字だけが違うタグは、UKADOC の一覧で確かめる。
+
 ### ページを直接読む
 
 **UKADOC** ── SSP とさくらスクリプトの仕様書
 
 | | |
 |---|---|
-| さくらスクリプト | `https://ssp.shillest.net/ukadoc/manual/list_sakura_script.html` |
-| SHIORI イベント | `https://ssp.shillest.net/ukadoc/manual/list_shiori_event.html` |
-| SHIORI リソース | `https://ssp.shillest.net/ukadoc/manual/list_shiori_resource.html` |
-| プロパティシステム | `https://ssp.shillest.net/ukadoc/manual/list_propertysystem.html` |
-| ゴーストの `descript.txt` | `https://ssp.shillest.net/ukadoc/manual/descript_ghost.html` |
-| シェルの `descript.txt` | `https://ssp.shillest.net/ukadoc/manual/descript_shell.html` |
-| `surfaces.txt` | `https://ssp.shillest.net/ukadoc/manual/descript_shell_surfaces.html` |
-| バルーンの `descript.txt` | `https://ssp.shillest.net/ukadoc/manual/descript_balloon.html` |
+| 全体の案内 | `https://ukatech.shillest.net/ukadoc-spec/llms.txt` |
+| さくらスクリプト | `https://ukatech.shillest.net/ukadoc-spec/list/sakura-script/index.md` |
+| SHIORI イベント | `https://ukatech.shillest.net/ukadoc-spec/list/shiori-event/index.md` |
+| SHIORI リソース | `https://ukatech.shillest.net/ukadoc-spec/list/shiori-resource/index.md` |
+| プロパティシステム | `https://ukatech.shillest.net/ukadoc-spec/list/propertysystem/index.md` |
+| ゴーストの `descript.txt` | `https://ukatech.shillest.net/ukadoc-spec/descript/ghost/index.md` |
+| シェルの `descript.txt` | `https://ukatech.shillest.net/ukadoc-spec/descript/shell/index.md` |
+| `surfaces.txt` | `https://ukatech.shillest.net/ukadoc-spec/descript/shell-surfaces/index.md` |
+| バルーンの `descript.txt` | `https://ukatech.shillest.net/ukadoc-spec/descript/balloon/index.md` |
 
-**里々 Wiki** ── 里々の関数と変数
+**里々の仕様書** ── 里々の関数と変数
 
 | | |
 |---|---|
-| 関数一覧 | `https://soliton.sub.jp/satori/?%E9%96%A2%E6%95%B0%E4%B8%80%E8%A6%A7` |
-| 特殊変数 | `https://soliton.sub.jp/satori/?%E7%89%B9%E6%AE%8A%E5%A4%89%E6%95%B0` |
-| 情報取得変数 | `https://soliton.sub.jp/satori/?%E6%83%85%E5%A0%B1%E5%8F%96%E5%BE%97%E5%A4%89%E6%95%B0` |
+| 全体の案内 | `https://ukatech.shillest.net/satori-docs/llms.txt` |
+| 内蔵関数（`set` `when` など） | `https://ukatech.shillest.net/satori-docs/functions/index.md` |
+| ssu の関数（`calc` `substr` など） | `https://ukatech.shillest.net/satori-docs/ssu/index.md` |
+| システム変数・組み込み名 | `https://ukatech.shillest.net/satori-docs/system/index.md` |
+| エラーメッセージ | `https://ukatech.shillest.net/satori-docs/other/error-messages.md` |
+| ACP 版（`Mc1XX`）との違い | `https://ukatech.shillest.net/satori-docs/other/unicode-changes.md` |
 
-他のページは `?<ページ名>` を URL エンコードして付ける
-（`?関数一覧` → `?%E9%96%A2%E6%95%B0%E4%B8%80%E8%A6%A7`）。
+どれも1項目1ファイルの Markdown。`index.md` は分類の一覧で、リンクを辿ると項目のファイルに着く。
+リンクは相対パスなので、開いたファイルの場所を基準に URL を組み立てる。
 
-一覧ページは大きい。必要な項目だけを探す。全文を読み下さない。
+**ファイル名からは引けない。**`\![execute,filewatch]` は `bang-execute-filewatch.md` になる。
+分類の一覧に並ぶタグ名・関数名で探す。
 
-**開けなければ Web 検索する。**URL が変わったか、サイトが移った可能性がある。
-そこで止まらない。`site:ssp.shillest.net` や `里々 <関数名>` のように対象を絞る。
+里々の関数は2か所に分かれる。片方で見つからなければ、もう片方を見る。
+
+**里々の仕様書は新しい Unicode 版（`Mc2XX`）のもの**。ゴーストの `satori.dll` はもっと古いことがある。
+載っていても、その版で同じに動くとは限らない。テスターで確かめ、違えば `references\dialogue.md`「satori.dll が古くて動かないとき」。
+
+**開けなければ、表の「全体の案内」から辿り直す。それでも開けなければ Web 検索する**。URL が変わったか、サイトが移った可能性がある。
+そこで止まらない。`site:ukatech.shillest.net` や `里々 <関数名>` のように対象を絞る。
