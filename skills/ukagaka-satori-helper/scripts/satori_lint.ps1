@@ -1,60 +1,63 @@
 ﻿# satori_lint.ps1
 #
-# 里々もテスターも何も言わない誤りを検出する。
+# 辞書を実行せずに検査する。
 #
 #   powershell -ExecutionPolicy Bypass -File satori_lint.ps1 <ghost/master>
 #
 # 使い方
-#   辞書を書いた後、テスターでエラーが無くなってから通す。
-#   里々がエラーを出している状態では通さない。
+#   辞書を書き換えるたびに、テスターより先に通す。
 #   本番の ghost/master を渡す。読むだけで、書き換えない。
-#
 #   **結果を利用者に見せない。**修正方針を決めるためだけに使う。
-#   利用者が意図して書いたかどうかを判別できないので、
-#   検出したものをそのまま「誤り」として提示しない。
-#   見るのは自分が書いた箇所・修正を依頼された箇所だけ。
+#   利用者が意図して書いたかどうかを判別できないので、検出したものをそのまま「誤り」として提示しない。
 #
-# 何を検出するか ── 里々もテスターも何も言わないもの
-#   [error] if / iflist / unless / switch / nswitch / choice の枝に処理がある（両方の枝が実行される）
-#           処理とみなすのは set・単語の追加・追加単語の削除・追加単語の全削除と、
-#           それを含む定義を呼ぶ call / loop / vncall。
-#           値を返すだけの定義を呼ぶものは報告しない。
-#   [warn ] 上の枝で、呼び先が判定できない call がある（動的な名前、辞書に無い名前）
-#   [error] 遅延する関数の引数がカッコで区切られている（if と同じ動作になる）
-#   [error] 閉じていない（ が次の ＊ ＠ の行を飲み込んでいる（間の定義が消える。里々は報告しない）
-#   [warn ] スコープ（： \0 \1）の直後に半角 [ がある（タグの引数として扱われる）
-#   [warn ] 採用条件がタブで区切られていない（条件が本文になり、常に採用される）
-#   [warn ] 条件式に数値にならない文字列を書いている（0 とみなされ常に偽）
-#   [warn ] 同名定義の採用条件に、同一の（乱数…）が2回以上ある（1回しか評価されない）
-#   [warn ] 括弧の中の字下げがタブでない（空白が引数に残る）
-#   [error] 行頭の ＄ ＞ ＿ の直後が空白（空白込みの名前で登録される）
-#   [error] ＝ / = の手前が空白（代入されない）
-#   [warn ] タブ区切りの代入に計算されない演算子がある（数式が文字列として格納される）
-#           （名前）と数のあいだの演算子だけを見る。日付・％・文字列の連結は報告しない
-#   [error] タブ代入の自己参照に計算されない演算子がある（数式が文字列として際限なく伸びる）
-#   [error] システム変数（A○ R○ C○ S○）に代入している（引数・カウンタが壊れる）
-#   [warn ] 変数・単語群・トークで同じ名前を使っている（片方が読めなくなる）
-#   [error] 開きカッコが末尾まで閉じていない（そこから後ろの定義が無効になる）
-#   [warn ] 閉じカッコが過剰（里々は動くが、入れ子の書き間違いの兆候）
+# 出力
+#   1件1行で、里々の lint（ShioriLint）と同じ形。ファイルと行の順に並べる。
 #
-# 何を検出しないか ── 里々が場所まで報告する。テスターを通せば分かる
-#   引数個数が合わない        「引数の個数が正しくありません。」を出力に混ぜる
-#   ＄行に区切りが無い        「※　＄による変数代入文には…※」をバルーンに出す
-#   行頭に空白がある ＄ ＞ ＿  その行をそのまま本文として表示する
-#   未定義の参照              括弧ごと画面に出す
-#   関数名に空白              同上
-#   == による比較             && || ! なら「' 式が計算不能です。」を出力に混ぜる
+#     ファイル(行) : error/warning/notice: 説明文
 #
-# replace.txt を適用してから検査する
-#   里々が実際に見るのは置換後の文字列なので、同じものを検査する。
-#   文字コードは里々の仕様で決める。
+#   自前の検査と里々の lint の結果を、同じ一覧に混ぜる。error があれば終了コード 1。
+#   里々の lint が無い版と、その結果を取れなかったときは、先頭にそう出す。
+#
+# 自前の検査
+#   ghost/master の下の dic*.txt を、サブフォルダも含めてすべて見る。
+#   [error]   if / iflist / unless / switch / nswitch / choice の枝に処理がある（両方の枝が実行される）
+#             処理とみなすのは set・単語の追加・追加単語の削除・追加単語の全削除と、
+#             それを含む定義を呼ぶ call / loop / vncall。値を返すだけの定義を呼ぶものは報告しない
+#   [warning] 上の枝で、呼び先が判定できない call がある（動的な名前、辞書に無い名前）
+#   [error]   遅延する関数の引数がカッコで区切られている（if と同じ動作になる）
+#   [error]   閉じていない（ が次の ＊ ＠ の行を飲み込んでいる（間の定義が消える）
+#   [warning] スコープ（： \0 \1）の直後と、トークの最初の行の行頭に半角 [ がある（タグの引数になる）
+#   [warning] トークの2行目以降の行頭に半角 [ がある（ウェイトが入らないと \n[…] となり、\n の引数になる）
+#   [warning] 採用条件がタブで区切られていない（条件が名前の一部になる）
+#   [error]   採用条件が数値にならない文字列（常に偽で、その定義は選ばれない）
+#   [warning] 同名定義に、（乱数…）を含む採用条件が丸ごと同じ記述で2回以上ある（1回しか評価されない）
+#   [notice]  括弧の中の字下げがタブでない（空白が引数に残る。表示のための字下げもある）
+#   [error]   行頭の ＄ ＞ の直後、タブの無い ＿ の直後が半角か全角の空白（空白込みの名前になる）
+#   [error]   ＝ / = の手前が空白（代入されない）
+#   [warning] タブ区切りの代入で、（名前）と数を演算子でつないでいる（式が文字列のまま入り、
+#             別の計算に使うと演算の順序がずれる）
+#   [error]   上のうち、自分自身を含むもの（呼ぶたびに式が伸びる）
+#   [warning] 変数・単語群・トークで同じ名前を使っている（片方が読めなくなる）
+#   [error]   開きカッコが末尾まで閉じていない（そこから後ろの定義が無効になる。そのファイルのほかの検査は行わない）
+#   [warning] 閉じカッコが過剰。φ（ と対になる ）と、１） a） のような番号は数えない
+#
+#   里々が読むのと同じ文字列を検査する。φ の次の1文字は文字として扱い、replace.txt は行ごとに適用する
+#   （行番号を本番と合わせるため）。文字コードは里々の決まりで決める。
 #     satori_bootconf.txt で UTF-8 に固定されていれば UTF-8
 #     （辞書は is_utf8_dic、replace.txt は is_utf8_replace。is_utf8_all は両方に効く）
 #     ACP 版（Mc1XX）: それ以外は Shift_JIS。BOM 付きのファイルは検査しない
 #     Unicode 版（Mc2XX）: BOM 付きか、UTF-8 の規則に反するバイト列がなければ UTF-8。それ以外は Shift_JIS
-#     satori.dll が無ければ文字コードを決められないので、検査しない
-#   行ごとに置換するので行番号は保たれる。
-#   出力するファイル名と行番号は本番の辞書に対応する。修正するのは本番。
+#
+# 里々の lint
+#   satori.dll の中に ShioriLint の名前がある版（Mc206-1 以降）でだけ行う。
+#   古い版は読み込まない。Mc162 以前は、辞書にエラーがあると OK を押すまで止まるダイアログを出すため。
+#   一時フォルダに satori.dll と辞書・設定だけをコピーし、テスターで送る。本番では動かさない。
+#   里々は終了のときに satori_savedata.txt を書き、読み込みと終了のときに辞書のイベントを実行するため。
+#   saori\ はコピーしない（ShioriLint は SAORI の名前を ＠SAORI から知る。SAORI を動かさないため）。
+#
+#   見ないもの：セーブデータにしか無い変数（「見つかりません」と出る）と、＄辞書フォルダ で切り替える先の辞書。
+#   切り替え先は、テスターの seq.txt で切り替えるイベントの後に [ShioriLint] を送って見る。
+#   結果は応答の ErrorDescription: に、バイト値 1 で区切って並ぶ。
 #
 # 事前のビルドは要らない。実行時に Add-Type がコンパイルする。
 #
@@ -69,7 +72,7 @@ param(
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
 
 $usage = @'
-里々もテスターも何も言わない誤りを検出する。
+辞書を実行せずに検査する。
 
   satori_lint.ps1 <ghost/master>
 
@@ -114,9 +117,6 @@ public class SatoriLint
     // 呼び先の定義の本文。名前 → 本文（同名は全部）
     static Dictionary<string, List<string>> defs = new Dictionary<string, List<string>>();
 
-    // システム変数。代入すると引数・カウンタが壊れる
-    static readonly Regex SYSTEM_VAR = new Regex(@"^[ARCSＡＲＣＳ][0-9０-９]+$");
-
     // ＄への代入の区切り
     static readonly Regex ASSIGN = new Regex(@"^＄([^\t＝=]*)([\t＝=])(.*)$");
 
@@ -137,23 +137,16 @@ public class SatoriLint
 
     // -----------------------------------------------------------------------
 
-    class Issue
-    {
-        public string File, Level, Kind, Message, Snippet;
-        public int Line;
-    }
-
     class Node { public int Start, End; }
 
-    static List<Issue> issues = new List<Issue>();
+    // 1件1行。里々の lint と同じ形「ファイル(行) : ErrorLevel の値: 説明文」
+    static List<string> issues = new List<string>();
     public static int ErrorCount = 0;
 
-    static void Add(string file, int line, string level, string kind, string msg, string snippet)
+    static void Add(string file, int line, string level, string msg)
     {
-        Issue i = new Issue();
-        i.File = file; i.Line = line; i.Level = level;
-        i.Kind = kind; i.Message = msg; i.Snippet = snippet;
-        issues.Add(i);
+        issues.Add(file + "(" + line + ") : " + level + ": " + msg);
+        if (level == "error") { ErrorCount++; }
     }
 
     // -----------------------------------------------------------------------
@@ -193,37 +186,52 @@ public class SatoriLint
         return lo + 1;
     }
 
+    // φ の次の文字の代わりに置く印（私用領域）。括弧やコメントとして数えないため
+    const char ESC_OPEN = '\uE000', ESC_CLOSE = '\uE001', ESC_HASH = '\uE002', ESC_PHI = '\uE003';
+
+    // φ の次の1文字を印に置き換える。文字数は変えない
+    static string MaskEscapes(string text)
+    {
+        StringBuilder sb = new StringBuilder(text);
+        for (int i = 0; i + 1 < sb.Length; i++)
+        {
+            if (sb[i] != 'φ') { continue; }
+            char c = sb[i + 1];
+            if (c == '（') { sb[i + 1] = ESC_OPEN; }
+            else if (c == '）') { sb[i + 1] = ESC_CLOSE; }
+            else if (c == '＃') { sb[i + 1] = ESC_HASH; }
+            else if (c == 'φ') { sb[i + 1] = ESC_PHI; }
+            i++;
+        }
+        return sb.ToString();
+    }
+
     static string Visible(string s)
     {
-        return s.Replace("\t", "⇥").Replace("\r", "").Replace("\n", "⏎");
+        return s.Replace("\t", "⇥").Replace("\r", "").Replace("\n", "⏎")
+            .Replace(ESC_OPEN, '（').Replace(ESC_CLOSE, '）').Replace(ESC_HASH, '＃').Replace(ESC_PHI, 'φ');
     }
 
-    static string Excerpt(string text, int pos)
-    {
-        int end = text.IndexOf('\n', pos);
-        if (end < 0) { end = text.Length; }
-        int len = Math.Min(end - pos, 70);
-        return Visible(text.Substring(pos, len));
-    }
-
-    static string LineText(string[] lines, int line)
-    {
-        return (line - 1 < lines.Length) ? Visible(lines[line - 1]) : "";
-    }
-
-    // 括弧の対応。φ（ φ） は数えない
+    // 括弧の対応。φ（ φ） は MaskEscapes で印になっているので数えない。
+    // 対応する（ の無い ） のうち、同じ行の φ（ と対になるものと、１） a） のような番号は過剰としない
     static void ScanParens(string text, List<Node> nodes, List<int> unclosed, List<int> orphan)
     {
         List<int> stack = new List<int>();
+        int escapedOpen = 0;
         for (int i = 0; i < text.Length; i++)
         {
             char c = text[i];
+            if (c == '\n') { escapedOpen = 0; continue; }
+            if (c == ESC_OPEN) { escapedOpen++; continue; }
             if (c != '（' && c != '）') { continue; }
-            if (i > 0 && text[i - 1] == 'φ') { continue; }
             if (c == '（') { stack.Add(i); }
             else
             {
-                if (stack.Count == 0) { orphan.Add(i); }
+                if (stack.Count == 0)
+                {
+                    if (escapedOpen > 0) { escapedOpen--; }
+                    else if (i == 0 || !IsListMarker(text[i - 1])) { orphan.Add(i); }
+                }
                 else
                 {
                     Node n = new Node();
@@ -292,6 +300,12 @@ public class SatoriLint
     static bool IsDigitChar(char c)
     {
         return (c >= '0' && c <= '9') || (c >= '０' && c <= '９');
+    }
+
+    static bool IsListMarker(char c)
+    {
+        return IsDigitChar(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+            || (c >= 'ａ' && c <= 'ｚ') || (c >= 'Ａ' && c <= 'Ｚ');
     }
 
     // 括弧の外（地の文）に、計算のつもりの演算子があるか。
@@ -434,15 +448,13 @@ public class SatoriLint
     {
         foreach (int pos in unclosed)
         {
-            Add(name, LineOf(lineStarts, pos), "error", "カッコ未閉じ",
-                "開きカッコ「（」に対応する「）」がありません。この定義からファイルの末尾までが無効になります。",
-                Excerpt(text, pos));
+            Add(name, LineOf(lineStarts, pos), "error",
+                "開きカッコ「（」に対応する「）」がありません。この定義からファイルの末尾までが無効になります。このファイルのほかの検査は行っていません。");
         }
         foreach (int pos in orphan)
         {
-            Add(name, LineOf(lineStarts, pos), "warn", "カッコ過剰",
-                "対応する「（」のない閉じカッコ「）」があります。里々は影響を受けませんが、入れ子の書き間違いの疑いがあります。",
-                Excerpt(text, Math.Max(0, pos - 30)));
+            Add(name, LineOf(lineStarts, pos), "warning",
+                "対応する「（」のない閉じカッコ「）」があります。里々は影響を受けませんが、入れ子の書き間違いの疑いがあります。");
         }
     }
 
@@ -462,10 +474,9 @@ public class SatoriLint
         {
             if (n.Start < lastEnd) { continue; }
             lastEnd = n.End;
-            Add(name, LineOf(lineStarts, n.Start), "error", "定義の飲み込み",
+            Add(name, LineOf(lineStarts, n.Start), "error",
                 "閉じていない「（」が、" + LineOf(lineStarts, n.End) + "行目の「）」まで続いています。"
-                + "間にある ＊ ＠ の定義は読まれず、台詞として表示されます。里々は報告しません。",
-                Excerpt(text, n.Start));
+                + "間にある ＊ ＠ の定義は読まれず、台詞として表示されます。里々は報告しません。");
         }
     }
 
@@ -493,17 +504,15 @@ public class SatoriLint
                 }
                 if (found == 1)
                 {
-                    Add(name, line, "error", "枝の副作用",
+                    Add(name, line, "error",
                         fn + " の枝に処理（" + what + "）があります。" + fn
-                        + " は選ばれなかった枝も実行するので、when / whenlist を使ってください。",
-                        Excerpt(text, node.Start));
+                        + " は選ばれなかった枝も実行するので、when / whenlist を使ってください。");
                 }
                 else if (found == 2)
                 {
-                    Add(name, line, "warn", "枝の呼び出し",
+                    Add(name, line, "warning",
                         fn + " の枝に、呼び先を判定できない呼び出し（" + what + "）があります。"
-                        + "呼び先に処理があれば、選ばれなかった枝でも実行されます。",
-                        Excerpt(text, node.Start));
+                        + "呼び先に処理があれば、選ばれなかった枝でも実行されます。");
                 }
             }
 
@@ -525,9 +534,8 @@ public class SatoriLint
                 }
                 if (!hasDelim && h < rest.Length && rest[h] == '（')
                 {
-                    Add(name, line, "error", "カッコ区切り",
-                        fn + " の引数がカッコで区切られています。区切りが展開後に決まるため遅延が効かず、if と同じ動作になります。",
-                        Excerpt(text, node.Start));
+                    Add(name, line, "error",
+                        fn + " の引数がカッコで区切られています。区切りが展開後に決まるため遅延が効かず、if と同じ動作になります。");
                 }
             }
 
@@ -537,42 +545,66 @@ public class SatoriLint
                 if (body[i - 1] != '\n') { continue; }
                 if (body[i] == ' ' || body[i] == '　')
                 {
-                    Add(name, LineOf(lineStarts, node.Start + 1 + i), "warn", "字下げ",
-                        "括弧の中の字下げにタブ以外の空白が使われています。里々が読み飛ばすのは行頭タブだけなので、空白が引数に残ります。",
-                        Excerpt(text, node.Start + 1 + i));
+                    Add(name, LineOf(lineStarts, node.Start + 1 + i), "notice",
+                        "括弧の中の字下げにタブ以外の空白が使われています。里々が読み飛ばすのは行頭タブだけなので、空白が引数に残ります。");
                     break;
                 }
             }
         }
     }
 
-    // 3 条件の区切り / 4 文字列条件 / 7 記号の直後 / 8 ＝の手前 / 9 タブ代入の式 / 10 システム変数
+    // 3 条件の区切り / 4 文字列条件 / 7 記号の直後 / 8 ＝の手前 / 9 タブ代入の式 / 12 スコープ直後の[ / 13 行頭の[
     static void CheckLines(string name, string[] lines)
     {
+        bool inTalk = false;
+        bool bodyStarted = false;   // トークの本文で、文字を出す行がもう現れたか
+        int depth = 0;
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i].TrimEnd('\r');
+            int depthAtStart = depth;
+            foreach (char c in line)
+            {
+                if (c == '（') { depth++; }
+                else if (c == '）' && depth > 0) { depth--; }
+            }
             if (line.Length == 0) { continue; }
             char head = line[0];
             int ln = i + 1;
 
-            // 12 スコープの直後の半角 [
-            if (head != '＄' && head != '＊' && head != '＠' && SCOPE_BRACKET.IsMatch(line))
+            bool isHeader = (head == '＊' || head == '＠');
+            if (head == '＊') { inTalk = true; bodyStarted = false; }
+            else if (head == '＠') { inTalk = false; }
+
+            // 12 スコープの直後の半角 [。トークの最初の行の [ も、里々が前に \0 \1 を入れるので同じになる
+            bool firstBracket = (head == '[' && inTalk && !bodyStarted && depthAtStart == 0);
+            if ((head != '＄' && !isHeader && SCOPE_BRACKET.IsMatch(line)) || firstBracket)
             {
-                Add(name, ln, "warn", "スコープ直後の[",
-                    "スコープ（： \\0 \\1）の直後に半角 [ があります。里々がタグの引数として扱い、"
-                    + "ほかに文字が無いと応答が 204 になります。全角の括弧にしてください。",
-                    Visible(line));
+                Add(name, ln, "warning",
+                    "スコープ（： \\0 \\1）の直後に半角 [ があります。トークの最初の行の [ も、里々が前にスコープを入れるので同じです。"
+                    + "里々がタグの引数として扱い、ほかに文字が無いと応答が 204 になります。全角の括弧にしてください。");
             }
 
-            // 7 記号の直後が空白
-            if (head == '＄' || head == '＞' || head == '＿')
+            // 13 トークの2行目以降の行頭の半角 [。括弧の中の行は前の行とつながるので数えない
+            if (head == '[' && inTalk && bodyStarted && depthAtStart == 0)
             {
-                if (line.Length > 1 && IsSpace(line[1]))
+                Add(name, ln, "warning",
+                    "トークの本文の行頭に半角 [ があります。里々はこの行の前に改行（\\n）を入れます。"
+                    + "間に自動ウェイトが入らないとき（ウェイトを止めている、古い里々）は \\n[…] となり、"
+                    + "[ から ] までが \\n の引数として読まれて表示されません。全角の括弧にしてください。");
+            }
+
+            // 文字を出す行。＄ の代入と ＞ ≫ ≧ のジャンプは出さない
+            if (inTalk && !isHeader && depthAtStart == 0 && head != '＄' && head != '＞' && head != '≫' && head != '≧') { bodyStarted = true; }
+
+            // 7 記号の直後が空白。タブは区切り（＞【タブ】条件 は名前の無いトークへのジャンプ）。
+            // ＿ はタブが無いときだけ。タブがあれば ＿ の後は表示する文字で、名前にならない
+            if (head == '＄' || head == '＞' || (head == '＿' && line.IndexOf('\t') < 0))
+            {
+                if (line.Length > 1 && (line[1] == ' ' || line[1] == '　'))
                 {
-                    Add(name, ln, "error", "記号の直後",
-                        head + " の直後が空白です。空白込みの名前として登録されるので、参照できません。",
-                        Visible(line));
+                    Add(name, ln, "error",
+                        head + " の直後が空白です。空白込みの名前になるので、空白なしの名前では読めません。");
                     continue;
                 }
             }
@@ -590,18 +622,8 @@ public class SatoriLint
                     // 8 ＝の手前が空白
                     if ((sep == '＝' || sep == '=') && vname.Length > 0 && IsSpace(vname[vname.Length - 1]))
                     {
-                        Add(name, ln, "error", "＝の手前",
-                            "＝ の手前に空白があります。里々は代入しません。",
-                            Visible(line));
-                    }
-
-                    // 10 システム変数
-                    string bare = vname.TrimEnd(' ', '　', '\t');
-                    if (SYSTEM_VAR.IsMatch(bare))
-                    {
-                        Add(name, ln, "error", "システム変数",
-                            bare + " はシステムが使う名前です。引数やループカウンタを壊します。",
-                            Visible(line));
+                        Add(name, ln, "error",
+                            "＝ の手前に空白があります。里々は代入しません。");
                     }
 
                     // 9 タブ区切りの代入に式
@@ -610,15 +632,13 @@ public class SatoriLint
                         string self = "（" + vname + "）";
                         if (val.Contains(self) || val.Contains("(" + vname + ")"))
                         {
-                            Add(name, ln, "error", "自己参照の演算",
-                                "タブ代入の自己参照に計算されない演算子があります。数式が文字列として際限なく伸びます。＝ を使ってください。",
-                                Visible(line));
+                            Add(name, ln, "error",
+                                "タブ代入の自己参照に計算されない演算子があります。数式が文字列として際限なく伸びます。＝ を使ってください。");
                         }
                         else
                         {
-                            Add(name, ln, "warn", "タブ代入の演算",
-                                "タブ区切りの代入に計算されない演算子があります。数式が文字列として格納されます。＝ か calc を使ってください。",
-                                Visible(line));
+                            Add(name, ln, "warning",
+                                "タブ区切りの代入に計算されない演算子があります。数式が文字列として格納されます。＝ か calc を使ってください。");
                         }
                     }
                 }
@@ -649,9 +669,8 @@ public class SatoriLint
                     }
                     if (hit)
                     {
-                        Add(name, ln, "warn", "条件の区切り",
-                            "採用条件がタブで区切られていません。条件が名前の一部として扱われます。",
-                            Visible(line));
+                        Add(name, ln, "warning",
+                            "採用条件がタブで区切られていません。条件が名前の一部として扱われます。");
                     }
                     continue;
                 }
@@ -666,16 +685,15 @@ public class SatoriLint
                         && !COMPARE.IsMatch(cond)
                         && !LooksNumeric(cond))
                     {
-                        Add(name, ln, "warn", "文字列条件",
-                            "採用条件が数値になりません。0 とみなされ、常に偽になります。",
-                            Visible(line));
+                        Add(name, ln, "error",
+                            "採用条件が数値になりません。0 とみなされ、常に偽になります。");
                     }
                 }
             }
         }
     }
 
-    // 5 乱数の共有
+    // 5 乱数の共有。採用条件の記述が丸ごと同じものだけが1回の評価を共有する
     static void CheckRandom(string name, string[] lines)
     {
         Dictionary<string, Dictionary<string, List<int>>> byName =
@@ -691,12 +709,10 @@ public class SatoriLint
 
             string defName = line.Substring(0, tab);
             string cond = line.Substring(tab + 1);
-            foreach (Match m in RANDOM.Matches(cond))
-            {
-                if (!byName.ContainsKey(defName)) { byName[defName] = new Dictionary<string, List<int>>(); }
-                if (!byName[defName].ContainsKey(m.Value)) { byName[defName][m.Value] = new List<int>(); }
-                byName[defName][m.Value].Add(i + 1);
-            }
+            if (!RANDOM.IsMatch(cond)) { continue; }
+            if (!byName.ContainsKey(defName)) { byName[defName] = new Dictionary<string, List<int>>(); }
+            if (!byName[defName].ContainsKey(cond)) { byName[defName][cond] = new List<int>(); }
+            byName[defName][cond].Add(i + 1);
         }
 
         foreach (KeyValuePair<string, Dictionary<string, List<int>>> d in byName)
@@ -706,10 +722,9 @@ public class SatoriLint
                 if (r.Value.Count < 2) { continue; }
                 foreach (int ln in r.Value)
                 {
-                    Add(name, ln, "warn", "乱数の共有",
-                        d.Key + " の採用条件にある " + r.Key + " は、同じ記述なので1回しか評価されません。"
-                        + "全候補で同じ値になり、抽選になりません。",
-                        LineText(lines, ln));
+                    Add(name, ln, "warning",
+                        d.Key + " の採用条件「" + Visible(r.Key) + "」は、同じ記述が " + r.Value.Count + " 回あるので1回しか評価されません。"
+                        + "（乱数…）が全候補で同じ値になり、抽選になりません。");
                 }
             }
         }
@@ -772,10 +787,9 @@ public class SatoriLint
                 foreach (string loc in k.Value)
                 {
                     int colon = loc.LastIndexOf(':');
-                    Add(loc.Substring(0, colon), int.Parse(loc.Substring(colon + 1)), "warn", "名前の重複",
+                    Add(loc.Substring(0, colon), int.Parse(loc.Substring(colon + 1)), "warning",
                         "「" + n.Key + "」が " + string.Join(" と ", kinds.ToArray())
-                        + " の両方で使われています。片方が読めなくなりますが、存在確認では両方 1 を返します。",
-                        "");
+                        + " の両方で使われています。片方が読めなくなりますが、存在確認では両方 1 を返します。");
                 }
             }
         }
@@ -788,9 +802,20 @@ public class SatoriLint
     // Unicode 版（Mc2XX）は文字列を UTF-16 で持つ
     static bool IsUnicode(string dir)
     {
+        return DllHas(dir, "satori_bootconf.txt");
+    }
+
+    // ShioriLint を受け付ける里々（Mc206-1 以降）は、イベント名を UTF-16 で持つ
+    public static bool HasShioriLint(string dir)
+    {
+        return DllHas(dir, "ShioriLint");
+    }
+
+    static bool DllHas(string dir, string s)
+    {
         Encoding latin1 = Encoding.GetEncoding(28591);
         return latin1.GetString(File.ReadAllBytes(Path.Combine(dir, "satori.dll")))
-            .Contains(latin1.GetString(Encoding.Unicode.GetBytes("satori_bootconf.txt")));
+            .Contains(latin1.GetString(Encoding.Unicode.GetBytes(s)));
     }
 
     static bool IsValidUtf8(byte[] b)
@@ -808,7 +833,11 @@ public class SatoriLint
         return bom ? null : Encoding.GetEncoding(932).GetString(b);
     }
 
-    public static string[] Run(string dir, bool dicUtf8, string replacePath, bool repUtf8)
+    // 1行の先頭「ファイル(行) : 」
+    static readonly Regex LOCATION = new Regex(@"^(.+)\((\d+)\) : ");
+
+    // satori は里々の lint の結果（ErrorDescription の各要素）。同じ形なので、そのまま一緒に並べる
+    public static string[] Run(string dir, bool dicUtf8, string replacePath, bool repUtf8, string[] satori)
     {
         issues.Clear();
         ErrorCount = 0;
@@ -845,14 +874,15 @@ public class SatoriLint
         List<string[]> loaded = new List<string[]>();
         foreach (string path in paths)
         {
-            string fname = path.Substring(dir.Length).TrimStart('\\', '/');
+            // 里々の lint と同じく、master からの相対パスを / で区切る
+            string fname = path.Substring(dir.Length).TrimStart('\\', '/').Replace('\\', '/');
             string raw;
             try { raw = ReadSatoriText(path, unicode, dicUtf8); }
             catch (Exception ex) { output.Add("読み込み失敗: " + fname + " (" + ex.Message + ")"); continue; }
             if (raw == null) { output.Add("検査しない: " + fname + " (この satori.dll は BOM 付きのファイルを読めません)"); continue; }
             raw = raw.Replace("\r\n", "\n");
 
-            string text = StripComments(raw);
+            string text = StripComments(MaskEscapes(raw));
             string[] lines = text.Split('\n');
 
             if (rules.Count > 0)
@@ -885,12 +915,7 @@ public class SatoriLint
             CheckParens(fname, text, lines, lineStarts, unclosed, orphan);
 
             // 未閉じがあると括弧の範囲を取り違えるので、このファイルは打ち切る
-            if (unclosed.Count > 0)
-            {
-                Add(fname, LineOf(lineStarts, unclosed[0]), "error", "検査の打ち切り",
-                    "カッコが閉じていないため、このファイルの他の検査を行いませんでした。", "");
-                continue;
-            }
+            if (unclosed.Count > 0) { continue; }
 
             CheckSwallow(fname, text, lineStarts, nodes);
             CheckNodes(fname, text, lineStarts, nodes);
@@ -901,23 +926,24 @@ public class SatoriLint
 
         CheckDuplicateNames(names);
 
-        issues.Sort(delegate(Issue a, Issue b)
+        // ファイルと行の順に並べる。先頭が「ファイル(行) : 」でない行（件数を省略したという知らせなど）は最後。
+        // 同じ位置は元の順（自前が先）を保つ
+        issues.AddRange(satori);
+        List<KeyValuePair<int, string>> order = new List<KeyValuePair<int, string>>();
+        for (int k = 0; k < issues.Count; k++) { order.Add(new KeyValuePair<int, string>(k, issues[k])); }
+        order.Sort(delegate(KeyValuePair<int, string> a, KeyValuePair<int, string> b)
         {
-            int c = string.CompareOrdinal(a.File, b.File);
-            if (c != 0) { return c; }
-            return a.Line.CompareTo(b.Line);
+            Match ma = LOCATION.Match(a.Value), mb = LOCATION.Match(b.Value);
+            if (ma.Success != mb.Success) { return ma.Success ? -1 : 1; }
+            int c = 0;
+            if (ma.Success)
+            {
+                c = string.CompareOrdinal(ma.Groups[1].Value, mb.Groups[1].Value);
+                if (c == 0) { c = long.Parse(ma.Groups[2].Value).CompareTo(long.Parse(mb.Groups[2].Value)); }
+            }
+            return (c != 0) ? c : a.Key.CompareTo(b.Key);
         });
-
-        int warnCount = 0;
-        foreach (Issue i in issues)
-        {
-            if (i.Level == "error") { ErrorCount++; } else { warnCount++; }
-            output.Add(string.Format("{0}:{1}: [{2}] {3}: {4}", i.File, i.Line, i.Level, i.Kind, i.Message));
-            if (i.Snippet.Length > 0) { output.Add("    > " + i.Snippet); }
-        }
-
-        output.Add("");
-        output.Add(string.Format("error {0} 件 / warn {1} 件", ErrorCount, warnCount));
+        foreach (KeyValuePair<int, string> e in order) { output.Add(e.Value); }
         return output.ToArray();
     }
 }
@@ -934,6 +960,54 @@ if (Test-Path $bootconf) {
     if ($conf -match 'is_utf8_replace\s*,\s*true' -or $conf -match 'is_utf8_all\s*,\s*true') { $repUtf8 = $true }
 }
 
-[SatoriLint]::Run($MasterDir, $dicUtf8, (Join-Path $MasterDir 'replace.txt'), $repUtf8) | ForEach-Object { Write-Output $_ }
-if ([SatoriLint]::ErrorCount -gt 0) { exit 1 } else { exit 0 }
+# 里々の lint。一時フォルダのコピーで、テスターから送る。
+# テスターは別のプロセスで動かす。同じプロセスだと satori.dll が読み込まれたまま残り、一時フォルダを消せない
+# ShioriLint を持たない里々は読み込まない
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('satori_lint_' + [Guid]::NewGuid().ToString('N'))
+$copy = Join-Path $tmp 'master'
+$res = ''
+$hasLint = [SatoriLint]::HasShioriLint($MasterDir)
+if ($hasLint) {
+    try {
+        New-Item -ItemType Directory -Force $copy | Out-Null
+        foreach ($n in 'satori.dll', 'satori_bootconf.txt', 'satori_conf.txt', 'replace.txt', 'replace_after.txt') {
+            $src = Join-Path $MasterDir $n
+            if (Test-Path $src) { Copy-Item $src $copy }
+        }
+        $full = (Resolve-Path $MasterDir).Path.TrimEnd('\')
+        Get-ChildItem $full -Filter 'dic*.txt' -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring($full.Length).TrimStart('\')
+            if ($rel -like 'saori\*') { return }
+            $dest = Join-Path $copy $rel
+            New-Item -ItemType Directory -Force (Split-Path $dest -Parent) | Out-Null
+            Copy-Item $_.FullName $dest
+        }
+        $seq = Join-Path $tmp 'seq.txt'
+        [IO.File]::WriteAllText($seq, "[ShioriLint]`r`n", (New-Object System.Text.UTF8Encoding($false)))
+        $res = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'satori_runner.ps1') $seq $copy $tmp) -join "`n"
+    }
+    finally {
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+}
+
+# 里々の lint が無いときと、結果を取れなかったときは、そのことを先頭に出す。出さないと、誤りが無いと読める
+$levels = @(); $descs = @()
+if (-not $hasLint) {
+    Write-Output 'この satori.dll は古い版のため、公式の lint（ShioriLint）がありません。存在しない飛び先や引数の個数の誤りは、テスターで見てください。'
+}
+else {
+    $section = $res.Substring([Math]::Max(0, $res.IndexOf('========== ShioriLint ==========')))
+    if ($section -match '(?m)^SHIORI/3\.0 200') {
+        if ($section -match '(?m)^ErrorLevel: (.*)$')       { $levels = $Matches[1] -split [char]1 }
+        if ($section -match '(?m)^ErrorDescription: (.*)$') { $descs  = $Matches[1] -split [char]1 }
+    }
+    else {
+        Write-Output '里々の lint の結果を取得できませんでした。テスターの出力:'
+        $res -split "`n" | Select-Object -First 20 | ForEach-Object { Write-Output "  $_" }
+    }
+}
+
+[SatoriLint]::Run($MasterDir, $dicUtf8, (Join-Path $MasterDir 'replace.txt'), $repUtf8, [string[]]$descs) | ForEach-Object { Write-Output $_ }
+if ([SatoriLint]::ErrorCount -gt 0 -or $levels -contains 'error') { exit 1 } else { exit 0 }
 

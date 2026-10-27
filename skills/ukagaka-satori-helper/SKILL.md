@@ -21,7 +21,7 @@ scripts\      実行する。使い方は各ファイルの冒頭コメントに
   satori_dic.ps1        辞書を読み書きする。Shift_JIS を壊さない
   satori_runner.ps1     SSP を介さずにイベントを送り、応答を見る
   satori_script.ps1     返ったさくらスクリプトが壊れていないか検査する
-  satori_lint.ps1       里々もテスターも報告しない誤りを検出する
+  satori_lint.ps1       辞書を実行せずに検査する。里々の lint（ShioriLint）も付ける
   satori_log.ps1        里々の内部ログに問い合わせる
   Get-GhostInfo.ps1     動作中の SSP と里々から値を取る
 ```

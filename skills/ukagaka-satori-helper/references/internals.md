@@ -404,6 +404,7 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 ＿えらぶ                 → \q[えらぶ,えらぶ◆えらぶ◆1]
 ＿えらぶ<TAB>ジャンプ先   → \q[えらぶ,ジャンプ先◆えらぶ◆1]
 \q[えらぶ,ID1]           → \q[えらぶ,ID1◆えらぶ◆1]
+\q[えらぶ,ID1,a,b]       → \q[えらぶ,ID1◆えらぶ◆1,a,b]     引数は残る
 
 ＿test<TAB>On_ID         → \q[test,On_ID]               そのまま
 \q[test,On_ID]           → \q[test,On_ID]               そのまま
@@ -414,7 +415,7 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 ◆ は 0x01
 ```
 
-書き換えるときは、元の ID の後ろにラベルと番号を足す。番号は 1 から数える。
+書き換えるときは、元の ID の後ろにラベルと番号を足す。番号は応答の中で 1 から数える。書き換えない選択肢は数えない。
 
 選択肢が選ばれて `OnChoiceSelect` が返ってくると、里々はこの ID を分解し、
 `（選択ＩＤ）（選択ラベル）（選択番号）` に入れてから、
@@ -433,7 +434,7 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 
 ### 書き換えられなければ選択肢変数も更新されない
 
-`OnChoiceSelect` で戻ってきても、分解する対象が無いため。
+`OnChoiceSelectEx` や `OnChoiceSelect` が届いても、分解する対象が無いため。`On` と `script:` の選択肢では、これらのイベント自体が届かない。
 
 **更新されないとき、変数は空にならない。前に選んだ値がそのまま残る。**
 書き換えられる選択肢と `On` 始まりの選択肢を混ぜて使うと、
@@ -441,52 +442,32 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 
 `On` や `script:`、`\__q` を使うなら、選択肢変数に頼らない。
 
-### OnChoiceSelect は定義しなくても動く
+### 選んだあとの処理
 
-`＊OnChoiceSelect` を書かなくても、里々が処理する。
-
-1. ID を 0x01 で分解し、`（選択ＩＤ）（選択ラベル）（選択番号）` にセット
-2. `（Ｒ０）` を ID だけに置き換え
-3. その ID と同じ名前のトークへジャンプ
-
-`＿えらぶ<TAB>ジャンプ先` と書くだけで `＊ジャンプ先` が呼ばれるのは、3のため。
-
-`＊OnChoiceSelect` を定義しても、1と2は行われる。
-分解済みの値を受け取ったうえで、処理を足せる。
-
-### OnChoiceSelectEx には手を付けない
-
-SSP は `OnChoiceSelect` より先に `OnChoiceSelectEx` を送る。
-里々はこれに何もしない。定義しなければ 204 を返すだけ。
+`On` で始まらない ID の選択肢が選ばれると、SSP は `OnChoiceSelectEx` を送る。その応答が 204 のときだけ、続けて `OnChoiceSelect` を送る。
 
 | | `（Ｒ０）` | `（Ｒ１）` | `（Ｒ２）`以降 |
 |---|---|---|---|
 | `OnChoiceSelect` | ID | ─ | ─ |
-| `OnChoiceSelectEx` | ラベル | ID | `\q` の3番目以降の引数 |
+| `OnChoiceSelectEx` | ラベル | ID | 引数 |
 
 並びが逆。
 
-`＊OnChoiceSelectEx` で `＞（Ｒ１）` と書いてジャンプさせる手があるが、
-**`\q` で出した選択肢では ID が加工済みなので飛べない。**
+`OnChoiceSelectEx` の `（Ｒ１）` も、`OnChoiceSelect` と同じく分解する。
+古い里々は、`OnChoiceSelectEx` では分解しない。`（Ｒ１）` は `ID1◆えらぶ◆1` のまま届き、選択肢変数も入らない。
+これが問題になるときは、最新の里々への差し替えを提案する。
 
-```
-\q[test,ID1,param1,param2]
-→ \q[test,ID1◆test◆1,param1,param2]      ID だけ加工され、引数は残る
+そのあと里々がすることは、辞書に書いたものによって決まる。
 
-（Ｒ１） ＝ ID1◆test◆1                    この名前のトークは無い
-```
+| 辞書に書いたもの | `OnChoiceSelectEx` | `OnChoiceSelect`（Ex が 204 のときだけ届く） |
+|---|---|---|
+| どちらも無い | 引数があれば ID のトークを実行し、引数を `（Ａ０）` 以降に入れる（Mc201-11 以降。それより前は 204 で、引数は失われる）。引数が無ければ 204 | ID のトークを実行する。Ex で実行したトークが何も返さず 204 になったときは、もう一度は実行しない |
+| `＊OnChoiceSelect` | 204 | `＊OnChoiceSelect` を実行する。ID のトークは実行しない |
+| `＊OnChoiceSelectEx` | `＊OnChoiceSelectEx` を実行する | ID のトークを実行する |
+| 両方 | `＊OnChoiceSelectEx` を実行する | `＊OnChoiceSelect` を実行する。ID のトークは実行しない |
 
-`\__q` なら加工されない。引数つきで `OnChoiceSelectEx` を使うならこちら。
-
-```
-\__q[ID1,param1,param2]test\__q     そのまま渡る
-
-＊OnChoiceSelectEx
-＞（Ｒ１）
-
-＊ID1
-：引数1は（Ｒ２）、引数2は（Ｒ３）
-```
+**`＊OnChoiceSelectEx` が何かを返すと、`OnChoiceSelect` は届かない。** ID のトークへ進めるなら、`＊OnChoiceSelectEx` の中で `＞（Ｒ１）` と書く。
+古い里々では `（Ｒ１）` が分解されず飛べないが、Ex が 204 になり、続く `OnChoiceSelect` で ID のトークが実行される。
 
 書き換えられた ID は応答にそのまま現れる。
 `replace_after.txt` と `OnTranslate` が受け取るのも、書き換えた後の文字列。
@@ -552,7 +533,8 @@ SSP は `OnChoiceSelect` より先に `OnChoiceSelectEx` を送る。
 
 ### 時間が経つと戻る ── OnSurfaceRestore
 
-SSP が喋りタイムアウトの秒数 + 15秒後に一度送る。
+SSP が喋りタイムアウトの秒数 + 15秒（SSP の初期設定。設定で変えられる）後に一度送る。
+選択肢を表示している間は送られない。
 **このイベントは、辞書に書かなくても里々が応答する。**
 
 ```
