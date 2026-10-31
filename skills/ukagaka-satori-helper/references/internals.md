@@ -197,7 +197,7 @@ SSP ごと終了   OnCloseAll → OnSatoriClose → OnClose
 
 ```
 ＊OnSatoriClose
-＄終了時刻	（現在通算秒）
+＄終了時刻	（time_t）
 ```
 
 ---

@@ -136,15 +136,17 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 
 答えを持っていない相手に、判断を投げない。却下されてから読むのでは遅い。
 
-**4. 既存の辞書を読む**
+**4. 既存の辞書を読む** ── 先に `references\syntax.md` を通読する
 
 `ghost\master` の `dic*.txt`。サブフォルダも含む。
 何本あって、どれに何が書かれているかを掴んでから触る。
 口調も書き方も、既にあるものに合わせる。
 
-**5. 書く** ── `references\syntax.md` を通読する
+**5. 書く**
 
 何を作るかで引くものが変わる。下の「参照先」を見る。
+
+作者が後で変えたくなる値（速さ・間隔・回数・確率・件数・ボタンの文言など）は、処理に埋めず、`＠` で定義して先頭に置く。既存の辞書が埋め込んでいても、新しく書く分はこうする。直しの依頼は必ず来る（→ `references\patterns.md`「調整する値は、設定として先に置く」）。
 
 **6. 通す** ── `references\testing.md`
 
