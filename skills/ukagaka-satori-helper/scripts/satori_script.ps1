@@ -86,6 +86,10 @@ param(
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
 
+# 相対パスは PowerShell の現在位置が基準。.NET はプロセスの作業ディレクトリで解決し、
+# Set-Location では変わらないので、食い違う前に絶対パスへ直す
+function Get-AbsPath([string]$p) { [IO.Path]::GetFullPath([IO.Path]::Combine($PWD.ProviderPath, $p)) }
+
 $usage = @'
 里々が返したさくらスクリプトが壊れていないかを検査する。
 
@@ -240,7 +244,7 @@ function Get-Excerpt {
 
 $exitCode = 0
 try {
-    $responses = Load-SatoriInput $ResultFile
+    $responses = Load-SatoriInput (Get-AbsPath $ResultFile)
     if ($responses.Count -eq 0) {
         Write-Output "Value: の行が見つからない。テスターの出力を渡す: $ResultFile"
         $exitCode = 2

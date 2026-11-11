@@ -26,8 +26,7 @@ scripts\      実行する。使い方は各ファイルの冒頭コメントに
   Get-GhostInfo.ps1     動作中の SSP と里々から値を取る
 ```
 
-`Get-GhostInfo.ps1` だけは、**カレントディレクトリをゴーストのルートにして呼ぶ。**
-残りは対象を引数で受け取るので、どこから呼んでもよい。
+どれも対象を引数で受け取るので、どこから呼んでもよい。
 
 ---
 
@@ -118,7 +117,7 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 依頼を受けたら、この順で進める。
 既にあるものを直すだけなら、2 と 3 は飛ばしてよい。
 
-**1. 辞書の文字コードを確かめる**
+**1. 辞書の文字コードと、里々の版を確かめる**
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\master>
@@ -127,6 +126,9 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 「Shift_JIS が混じります」が返ったら、**以後の辞書の読み書きはすべて
 `scripts\satori_dic.ps1` を通す。**直接編集すると文字化けし、元に戻せない。
 「UTF-8 です」なら直接編集してよい。
+
+同じ出力の `里々: phase Mc…` が、そのゴーストの里々の版。
+`references\` にある「Mc201-11 以降」のような条件は、この版と比べる。満たさない書き方は、書く前に避ける。
 
 **2. 里々で作れるかを判断する** ── `references\capabilities.md`
 

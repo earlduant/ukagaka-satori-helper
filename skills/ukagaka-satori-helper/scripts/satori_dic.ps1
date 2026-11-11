@@ -8,7 +8,7 @@
 # コマンド
 #   list <master>
 #       対象ファイルを列挙。結果が「Shift_JIS が混じります」なら、以後の読み書きはすべて本ツールを通す。
-#       「UTF-8 です」なら直接編集してよい。
+#       「UTF-8 です」なら直接編集してよい。satori.dll の版（例: phase Mc203-6）も出す。
 #   find <master> <語>
 #       対象ファイルから指定した文字列を部分一致で検索する（大小文字・全角半角を区別）。
 #   read <ファイル> <開始行> <終了行>
@@ -45,10 +45,17 @@ param(
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
 
+# 相対パスは PowerShell の現在位置が基準。C# や .NET はプロセスの作業ディレクトリで解決し、
+# Set-Location では変わらないので、食い違う前に絶対パスへ直す
+function Get-AbsPath([string]$p) { [IO.Path]::GetFullPath([IO.Path]::Combine($PWD.ProviderPath, $p)) }
+
 if (-not $Command -or -not $Target) {
     Write-Output "引数が足りません"
     exit 1
 }
+
+$Target = Get-AbsPath $Target
+if (($Command -eq 'write' -or $Command -eq 'insert' -or $Command -eq 'create') -and $Arg1) { $Arg1 = Get-AbsPath $Arg1 }
 
 $code = @'
 using System;
@@ -110,6 +117,21 @@ public class SatoriDic
         Encoding latin1 = Encoding.GetEncoding(28591);
         return latin1.GetString(File.ReadAllBytes(Path.Combine(master, "satori.dll")))
             .Contains(latin1.GetString(Encoding.Unicode.GetBytes("satori_bootconf.txt")));
+    }
+
+    // 版は satori.dll に文字列で埋まっている。ACP 版は ASCII、Unicode 版は UTF-16。読み込まずに取れる
+    static string ReadVersion(string master) {
+        try {
+            Encoding latin1 = Encoding.GetEncoding(28591);
+            string s = latin1.GetString(File.ReadAllBytes(Path.Combine(master, "satori.dll")));
+            Match m = Regex.Match(s, @"phase Mc\d+-\d+");
+            if (!m.Success) m = Regex.Match(s, @"p\0h\0a\0s\0e\0 \0M\0c\0(?:\d\0)+-\0(?:\d\0)+");
+            return m.Success ? m.Value.Replace("\0", "") : null;
+        } catch (IOException) {
+            return null;
+        } catch (UnauthorizedAccessException) {
+            return null;
+        }
     }
 
     static BootConf ReadBootConf(string master) {
@@ -338,6 +360,10 @@ public class SatoriDic
         } else {
             outLines.Add("Shift_JIS が混じります。satori_dic.ps1 を通してください。直接編集すると壊れます。");
         }
+        outLines.Add("");
+
+        string version = ReadVersion(master);
+        outLines.Add(version != null ? "里々: " + version : "里々: 版が取れませんでした（satori.dll が読めないか、版の文字列がありません）");
         outLines.Add("");
 
         foreach(string v in valid) outLines.Add(v);

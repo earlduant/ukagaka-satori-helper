@@ -138,7 +138,7 @@ function Write-Hits {
 }
 
 try {
-    $sections = Load-SatoriLog (Resolve-Path $LogPath).Path
+    $sections = Load-SatoriLog (Resolve-Path $LogPath).ProviderPath
     
     switch ($Query) {
         'problems' {

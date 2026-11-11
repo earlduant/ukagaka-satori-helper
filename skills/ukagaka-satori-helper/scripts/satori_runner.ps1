@@ -147,6 +147,10 @@ param(
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
 
+# 相対パスは PowerShell の現在位置が基準。.NET はプロセスの作業ディレクトリで解決し、
+# Set-Location では変わらないので、食い違う前に絶対パスへ直す
+function Get-AbsPath([string]$p) { [IO.Path]::GetFullPath([IO.Path]::Combine($PWD.ProviderPath, $p)) }
+
 $usage = @'
 SSP を介さずに satori.dll へ SHIORI イベントを送り、応答を取得する。
 
@@ -165,10 +169,10 @@ if (-not $SeqFile -or -not $MasterDir -or -not $WorkDir) { Write-Output $usage; 
 # 絶対パスにしてから使う。辞書のコピー先は本番のパスとの差で決めるため、相対のままだと狂う。
 # 末尾の \ は落とす。空白を含むパスを 32bit へ渡し直すとき、\" が引用符の
 # エスケープと解釈され、後ろの引数とつながる
-$SeqFile   = [IO.Path]::GetFullPath($SeqFile)
-$MasterDir = [IO.Path]::GetFullPath($MasterDir).TrimEnd('\')
-$WorkDir   = [IO.Path]::GetFullPath($WorkDir).TrimEnd('\')
-if ($SaveData) { $SaveData = [IO.Path]::GetFullPath($SaveData) }
+$SeqFile   = Get-AbsPath $SeqFile
+$MasterDir = (Get-AbsPath $MasterDir).TrimEnd('\')
+$WorkDir   = (Get-AbsPath $WorkDir).TrimEnd('\')
+if ($SaveData) { $SaveData = Get-AbsPath $SaveData }
 
 if (-not (Test-Path $SeqFile))   { Write-Output "シーケンスファイルがありません: $SeqFile"; exit 2 }
 if (-not (Test-Path $MasterDir)) { Write-Output "フォルダがありません: $MasterDir"; exit 2 }

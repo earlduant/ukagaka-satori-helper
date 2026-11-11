@@ -259,7 +259,7 @@ t を出す → 設定値ぶん待つ → e を出す → 設定値ぶん待つ 
 「次の意図的な改行まで」という仕様を使い、縦に動かない改行を挟む。
 
 ```
-\f[align,right]\q[×,OnClose]\n[0]\f[align,default]メニュー
+\f[align,right]\q[×,On_Menu_Close]\n[0]\f[align,default]メニュー
 ```
 
 1. 右寄せで `×` を描く
@@ -448,14 +448,14 @@ ID と引数は `\q` と同じに働く。ふつうの文字列なら里々が `
 `＠` には自動挿入が無い。イベントを `＠OnEventId` の形で受ければ、それで済む。
 
 ```
-＠OnAnchorSelect.URL
+＠On_Anchor_URL
 \C\0\j[（Ｒ０）]
 ```
 
 `＊` でなければならない場合だけ、`＄スクリプトの一番頭` を使う。
 
 ```
-＊OnAnchorSelect.URL
+＊On_Anchor_URL
 ＄スクリプトの一番頭	\C
 \0\j[（Ｒ０）]
 ```

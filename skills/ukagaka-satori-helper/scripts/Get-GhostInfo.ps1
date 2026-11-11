@@ -1,17 +1,19 @@
 ﻿# Get-GhostInfo.ps1
 #
-# SSPにSSTP経由で通信を行い、開発中のゴースト（カレントディレクトリの ghost\master\descript.txt）から
+# SSPにSSTP経由で通信を行い、開発中のゴースト（<ghost\master> の descript.txt）から
 # 「任意のプロパティシステムの値」および「SHIORIリソース（またはSHIORIイベント応答）」を取得するツール。
-# 
+#
 # 呼ぶ側が「プロパティかSHIORIか」を意識せずに取得できるよう、自動的に両方を試行（フォールバック）する設計となっている。
 #
-#   powershell -ExecutionPolicy Bypass -File Get-GhostInfo.ps1 -Name <Name>
+#   powershell -ExecutionPolicy Bypass -File Get-GhostInfo.ps1 <ghost\master> -Name <Name>
+#   powershell -ExecutionPolicy Bypass -File Get-GhostInfo.ps1 <ghost\master> <Name>
 #
-# 引数
-#   -Name <String> : (必須) 取得したい情報名 (プロパティ名またはSHIORIリソース/イベント名)
+# 引数（どちらも必須）
+#   <ghost\master> : 対象ゴーストの master フォルダ。相対パスは PowerShell の現在位置から解決する。
+#   -Name <String> : 取得したい情報名 (プロパティ名またはSHIORIリソース/イベント名)。位置引数でも渡せる。
 #
 # 動作の流れ
-#   1. ghost\master\descript.txt から charset を解析し、エンコーディングを自動判定してゴーストの name を読み取る。
+#   1. <ghost\master>\descript.txt から charset を解析し、エンコーディングを自動判定してゴーストの name を読み取る。
 #   2. SSP (127.0.0.1:9801) に TCP 接続を試みる。未起動なら「SSPが起動していません」として exit 1。
 #   3. プロパティ `activeghostlist(GhostName).name` を確認し、対象ゴーストが起動していないなら「ゴーストが起動していません」として exit 1。
 #   4. プロパティとして取得を試みる。
@@ -21,13 +23,22 @@
 #
 # 実行例
 #   # バルーン名を取る
-#   .\Get-GhostInfo.ps1 -Name "balloon.name"
+#   powershell -ExecutionPolicy Bypass -File Get-GhostInfo.ps1 <ghost\master> -Name "balloon.name"
 
 param(
-    [Parameter(Mandatory)][string]$Name
+    [Parameter(Position=0)][string]$MasterDir,
+    [Parameter(Position=1)][string]$Name
 )
 
-$DescriptPath = "ghost\master\descript.txt"
+if (-not $MasterDir -or -not $Name) {
+    [Console]::Error.WriteLine("使い方: Get-GhostInfo.ps1 <ghost\master> -Name <名前>"); exit 1
+}
+
+if (-not (Test-Path $MasterDir -PathType Container)) {
+    [Console]::Error.WriteLine("${MasterDir} が見つかりません"); exit 1
+}
+
+$DescriptPath = Join-Path $MasterDir "descript.txt"
 
 if (-not (Test-Path $DescriptPath)) {
     [Console]::Error.WriteLine("${DescriptPath} が見つかりません"); exit 1
@@ -35,7 +46,7 @@ if (-not (Test-Path $DescriptPath)) {
 
 try { [System.Text.Encoding]::RegisterProvider([System.Text.CodePagesEncodingProvider]::Instance) } catch {}
 
-$bytes = [IO.File]::ReadAllBytes((Resolve-Path $DescriptPath).Path)
+$bytes = [IO.File]::ReadAllBytes((Resolve-Path $DescriptPath).ProviderPath)
 $ascii = [Text.Encoding]::ASCII.GetString($bytes)
 
 $enc = [Text.Encoding]::GetEncoding(932)

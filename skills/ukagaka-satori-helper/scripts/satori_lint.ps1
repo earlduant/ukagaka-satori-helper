@@ -16,7 +16,11 @@
 #     ファイル(行) : error/warning/notice: 説明文
 #
 #   自前の検査と里々の lint の結果を、同じ一覧に混ぜる。error があれば終了コード 1。
-#   里々の lint が無い版と、その結果を取れなかったときは、先頭にそう出す。
+#   里々の lint が無い版は、先頭にそう出す。
+#   里々の lint を実行しようとして失敗したとき（持つかの判定・一時フォルダへのコピー・テスターの実行・結果の取り出し）は、
+#   先頭に「里々の lint を実行できませんでした」と、失敗した段階と理由を出す。自前の検査の結果は、そのまま続ける。
+#   終了コードは 1（error の有無にかかわらず）。検査が抜けたまま成功に見えないようにするため。
+#   終了コード: 0 error なし / 1 error あり、引数の誤り、里々の lint を実行できなかった
 #
 # 自前の検査
 #   ghost/master の下の dic*.txt を、サブフォルダも含めてすべて見る。
@@ -71,6 +75,10 @@ param(
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
 
+# 相対パスは PowerShell の現在位置が基準。C# や .NET はプロセスの作業ディレクトリで解決し、
+# Set-Location では変わらないので、食い違う前に絶対パスへ直す
+function Get-AbsPath([string]$p) { [IO.Path]::GetFullPath([IO.Path]::Combine($PWD.ProviderPath, $p)) }
+
 $usage = @'
 辞書を実行せずに検査する。
 
@@ -82,6 +90,7 @@ $usage = @'
 if (-not $MasterDir) { Write-Output $usage; exit 1 }
 if (-not (Test-Path $MasterDir)) { Write-Output "見つかりません: $MasterDir"; exit 1 }
 if (-not (Test-Path (Join-Path $MasterDir 'satori.dll'))) { Write-Output "satori.dll がありません: $MasterDir"; exit 1 }
+$MasterDir = Get-AbsPath $MasterDir
 
 $code = @'
 using System;
@@ -963,18 +972,24 @@ if (Test-Path $bootconf) {
 # 里々の lint。一時フォルダのコピーで、テスターから送る。
 # テスターは別のプロセスで動かす。同じプロセスだと satori.dll が読み込まれたまま残り、一時フォルダを消せない
 # ShioriLint を持たない里々は読み込まない
+# 段階の失敗を握りつぶすと、検査が抜けたまま成功に見える。段階と理由を $lintFailure に残し、最後に終了コード 1 にする
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('satori_lint_' + [Guid]::NewGuid().ToString('N'))
 $copy = Join-Path $tmp 'master'
 $res = ''
-$hasLint = [SatoriLint]::HasShioriLint($MasterDir)
-if ($hasLint) {
-    try {
+$hasLint = $null
+$lintFailure = $null
+$stage = 'ShioriLint を持つかの判定'
+$ErrorActionPreference = 'Stop'
+try {
+    $hasLint = [SatoriLint]::HasShioriLint($MasterDir)
+    if ($hasLint) {
+        $stage = '一時フォルダへのコピー'
         New-Item -ItemType Directory -Force $copy | Out-Null
         foreach ($n in 'satori.dll', 'satori_bootconf.txt', 'satori_conf.txt', 'replace.txt', 'replace_after.txt') {
             $src = Join-Path $MasterDir $n
             if (Test-Path $src) { Copy-Item $src $copy }
         }
-        $full = (Resolve-Path $MasterDir).Path.TrimEnd('\')
+        $full = (Resolve-Path $MasterDir).ProviderPath.TrimEnd('\')
         Get-ChildItem $full -Filter 'dic*.txt' -Recurse -File | ForEach-Object {
             $rel = $_.FullName.Substring($full.Length).TrimStart('\')
             if ($rel -like 'saori\*') { return }
@@ -984,30 +999,41 @@ if ($hasLint) {
         }
         $seq = Join-Path $tmp 'seq.txt'
         [IO.File]::WriteAllText($seq, "[ShioriLint]`r`n", (New-Object System.Text.UTF8Encoding($false)))
+        $stage = 'テスターの実行'
         $res = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'satori_runner.ps1') $seq $copy $tmp) -join "`n"
+        if ($LASTEXITCODE -ne 0) { throw "テスターが終了コード $LASTEXITCODE で終了しました" }
     }
-    finally {
-        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
-    }
+}
+catch { $lintFailure = $stage + ': ' + $_.Exception.Message }
+finally {
+    $ErrorActionPreference = 'Continue'
+    Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
 
-# 里々の lint が無いときと、結果を取れなかったときは、そのことを先頭に出す。出さないと、誤りが無いと読める
+# 里々の lint が無いときと、実行できなかったときは、そのことを先頭に出す。出さないと、誤りが無いと読める
 $levels = @(); $descs = @()
-if (-not $hasLint) {
-    Write-Output 'この satori.dll は古い版のため、公式の lint（ShioriLint）がありません。存在しない飛び先や引数の個数の誤りは、テスターで見てください。'
-}
-else {
-    $section = $res.Substring([Math]::Max(0, $res.IndexOf('========== ShioriLint ==========')))
-    if ($section -match '(?m)^SHIORI/3\.0 200') {
-        if ($section -match '(?m)^ErrorLevel: (.*)$')       { $levels = $Matches[1] -split [char]1 }
-        if ($section -match '(?m)^ErrorDescription: (.*)$') { $descs  = $Matches[1] -split [char]1 }
+if (-not $lintFailure) {
+    if (-not $hasLint) {
+        Write-Output 'この satori.dll は古い版のため、公式の lint（ShioriLint）がありません。存在しない飛び先や引数の個数の誤りは、テスターで見てください。'
     }
     else {
-        Write-Output '里々の lint の結果を取得できませんでした。テスターの出力:'
+        $section = $res.Substring([Math]::Max(0, $res.IndexOf('========== ShioriLint ==========')))
+        if ($section -match '(?m)^SHIORI/3\.0 200') {
+            if ($section -match '(?m)^ErrorLevel: (.*)$')       { $levels = $Matches[1] -split [char]1 }
+            if ($section -match '(?m)^ErrorDescription: (.*)$') { $descs  = $Matches[1] -split [char]1 }
+        }
+        else { $lintFailure = '結果の取り出し: 応答に SHIORI/3.0 200 がありません' }
+    }
+}
+if ($lintFailure) {
+    Write-Output '里々の lint を実行できませんでした。この検査が抜けています。'
+    Write-Output "  $lintFailure"
+    if ($res) {
+        Write-Output 'テスターの出力:'
         $res -split "`n" | Select-Object -First 20 | ForEach-Object { Write-Output "  $_" }
     }
 }
 
 [SatoriLint]::Run($MasterDir, $dicUtf8, (Join-Path $MasterDir 'replace.txt'), $repUtf8, [string[]]$descs) | ForEach-Object { Write-Output $_ }
-if ([SatoriLint]::ErrorCount -gt 0 -or $levels -contains 'error') { exit 1 } else { exit 0 }
+if ($lintFailure -or [SatoriLint]::ErrorCount -gt 0 -or $levels -contains 'error') { exit 1 } else { exit 0 }
 
