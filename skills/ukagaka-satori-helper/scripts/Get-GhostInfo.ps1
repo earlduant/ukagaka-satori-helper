@@ -16,7 +16,7 @@
 #   1. <ghost\master>\descript.txt から charset を解析し、エンコーディングを自動判定してゴーストの name を読み取る。
 #   2. SSP (127.0.0.1:9801) に TCP 接続を試みる。未起動なら「SSPが起動していません」として exit 1。
 #   3. プロパティ `activeghostlist(GhostName).name` を確認し、対象ゴーストが起動していないなら「ゴーストが起動していません」として exit 1。
-#   4. プロパティとして取得を試みる。
+#   4. プロパティとして取得を試みる。activeghostlist(GhostName). を前置きした名前で取れなければ、そのままの名前でも試す。
 #      - プロパティが存在すれば (200 OK)、その戻り値を標準出力へ返して終了。
 #   5. プロパティが存在しなければ、SHIORIリソース取得へ自動フォールバックする。
 #      - `SEND SSTP/1.4` で `Event: <Name>` を送信し、応答（Scriptヘッダの内容）を標準出力へ返す。
@@ -80,6 +80,10 @@ if ($p1 -notmatch "^SSTP/1.\d 200") { [Console]::Error.WriteLine("ゴースト�
 
 $prop = if ($Name -match "^(activeghostlist|currentghost|system\.|ghostpath)") { $Name } else { "activeghostlist($GhostName).$Name" }
 $p2 = Send-Sstp "EXECUTE SSTP/1.1`r`nSender: CLI`r`nCommand: GetProperty`r`nCharset: UTF-8`r`nConnection: close`r`nReference0: $prop`r`n`r`n"
+# baseware.version など、ゴーストに属さないプロパティは前置きを付けると取れない
+if ($p2 -notmatch "^SSTP/1.\d 200" -and $prop -ne $Name) {
+    $p2 = Send-Sstp "EXECUTE SSTP/1.1`r`nSender: CLI`r`nCommand: GetProperty`r`nCharset: UTF-8`r`nConnection: close`r`nReference0: $Name`r`n`r`n"
+}
 
 if ($p2 -match "^SSTP/1.\d 200") {
     # SSP の応答は NUL 終端。TrimEnd() は NUL を空白と見なさないので先に落とす

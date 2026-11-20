@@ -9,7 +9,7 @@ description: 里々（さとり / Satori SHIORI）で動く伺か（ukagaka）�
 references\   引く。必要な節だけを読む
   syntax.md             里々の記法。辞書に触るなら通読する
   capabilities.md       作れるかどうかを判断する
-  dialogue.md           利用者への提案・説明・依頼
+  dialogue.md           利用者への提案・説明・依頼・報告
   talk.md               トークを書く手順。断る基準もここ
   patterns.md           データを持つ・並べる型
   ui_architecture.md    専用画面の型。どこに表示を置くか
@@ -19,14 +19,14 @@ references\   引く。必要な節だけを読む
 
 scripts\      実行する。使い方は各ファイルの冒頭コメントにある
   satori_dic.ps1        辞書を読み書きする。Shift_JIS を壊さない
-  satori_runner.ps1     SSP を介さずにイベントを送り、応答を見る
+  satori_runner.ps1     SSP を介さずにイベントを送り、応答を見る（以後「テスター」と呼ぶ）
   satori_script.ps1     返ったさくらスクリプトが壊れていないか検査する
   satori_lint.ps1       辞書を実行せずに検査する。里々の lint（ShioriLint）も付ける
   satori_log.ps1        里々の内部ログに問い合わせる
   Get-GhostInfo.ps1     動作中の SSP と里々から値を取る
 ```
 
-どれも対象を引数で受け取るので、どこから呼んでもよい。
+`scripts\` はこの SKILL.md のあるフォルダからの相対パス。どれも対象を引数で受け取るので、作業ディレクトリはどこでもよい。
 
 ---
 
@@ -76,6 +76,7 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 
 **実行中に 200 で応答を返すと、実行中のものを破棄し、返した文字列を先頭から再生する。**
 204 なら、実行中のものはそのまま続く。
+先頭に `\C` を置いた応答だけは、実行中のものを出し切ってから続けて出る（→ `references\capabilities.md`「実行の途中には手を出せない」）。
 
 今出ている文の途中に割り込む形にはならない。
 どこまで実行されたかを知る手段も無い。
@@ -107,7 +108,7 @@ SSP は1本の列として、先頭から順に実行する。2つが同時に�
 サブフォルダの `dic*.txt` も、`＄辞書フォルダ` で切り替えたときに里々が読む。
 検査もサブフォルダまで走る。
 
-バックアップが要るなら、利用者に頼む。
+`master` の中にバックアップを置かない。`satori.dll` の差し替えなど、こちらが控えを取るときは `ghost\master_backup` のように `master` の外へ置く（→ `references\dialogue.md`「satori.dll が古くて動かないとき」）。
 作業フォルダは使い捨てなので、置き場所にならない。
 
 ---
@@ -137,6 +138,7 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 **3. 何を作るかを決めて、提示する** ── `references\dialogue.md`
 
 答えを持っていない相手に、判断を投げない。却下されてから読むのでは遅い。
+提示の前に、既存の辞書で、既にあるものと口調を見ておく。形の案に返事をもらってから 5 に進む。
 
 **4. 既存の辞書を読む** ── 先に `references\syntax.md` を通読する
 
@@ -154,7 +156,7 @@ powershell -ExecutionPolicy Bypass -File scripts\satori_dic.ps1 list <ghost\mast
 
 里々は、誤りがあっても止まらない。誤りは自分から見に行かないと見つからない。**動かさずに「書けた」と報告しない。**
 
-**7. 報告する** ── `references\dialogue.md`
+**7. 報告する** ── `references\dialogue.md`「報告する」
 
 **確かめた範囲を超えて「動いた」と報告しない。**
 
