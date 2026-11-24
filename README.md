@@ -105,6 +105,21 @@ github の earlduant/ukagaka-satori-helper を、このプロジェクトに入�
 
 ---
 
+## 更新（バージョンアップ）
+
+導入と同じく、チャットで AI に頼めば最新版へ入れ替えてくれます（Claude Code / Codex / Antigravity 共通）。
+
+```
+github の earlduant/ukagaka-satori-helper を最新版に更新して
+```
+
+AI は GitHub から最新版を取得し、導入済みの `ukagaka-satori-helper`（プラグイン、または `.agents\skills\ukagaka-satori-helper\` などの配置先）を最新のファイルで置き換えます。
+
+- **更新したあとは、いったん終了して開き直します**。新しいセッションから最新版が有効になります（更新した直後のセッションには反映されません）
+- 手動で更新する場合は、導入時と同じ手順で最新版を取得し、Codex / Antigravity は `ukagaka-satori-helper` フォルダを丸ごと置き換えてから開き直します（Claude Code は `/plugin` または `claude plugin` で更新・再インストール）
+
+---
+
 ## 使いかた
 
 日本語でそのまま頼むだけです。
@@ -136,7 +151,7 @@ github の earlduant/ukagaka-satori-helper を、このプロジェクトに入�
 ```
 skills\ukagaka-satori-helper\
   SKILL.md          最初に読まれるもの
-  references\       里々の記法、判断材料、確かめ方（9本）
+  references\       里々の記法、判断材料、確かめ方（10本）
   scripts\          辞書の検査・動作テスト（6本）
 ```
 
